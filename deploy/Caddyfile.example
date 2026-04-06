@@ -1,0 +1,9 @@
+# Exemplo Caddy (HTTPS automático com Let's Encrypt).
+# Uso: caddy run --config Caddyfile
+
+seu-dominio.com.br {
+    root * /var/www/attivos/dist
+    file_server
+    try_files {path} /index.html
+    encode gzip
+}

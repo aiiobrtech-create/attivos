@@ -1,0 +1,7 @@
+{
+  "name": "ATTIVOS",
+  "description": "Sistema completo de gestão de ativos imobilizados, controle patrimonial, manutenções e inventário.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}

@@ -1,0 +1,18 @@
+# Deploy na VPS: copie .env.production para .env na mesma pasta ou exporte as variáveis.
+# docker compose --env-file .env.production up -d --build
+
+services:
+  attivos:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL}
+        VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY}
+        VITE_DEFAULT_ADMIN_EMAIL: ${VITE_DEFAULT_ADMIN_EMAIL:-}
+        VITE_ALLOW_SIGNUP: ${VITE_ALLOW_SIGNUP:-0}
+        VITE_SEED_DEMO_DATA: ${VITE_SEED_DEMO_DATA:-0}
+        VITE_BASE_PATH: ${VITE_BASE_PATH:-/}
+    ports:
+      - "${ATTIVOS_HTTP_PORT:-8080}:80"
+    restart: unless-stopped

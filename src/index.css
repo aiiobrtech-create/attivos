@@ -1,0 +1,343 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --color-bg: #080d1a;
+  --color-bg2: #0f172a;
+  --color-bg3: #111827;
+  --color-bg4: #1e293b;
+  --color-brand: #6366f1;
+  --color-brand2: #818cf8;
+  --color-accent: #22d3ee;
+  --color-text: #f8fafc;
+  --color-text2: #94a3b8;
+  --color-text3: #475569;
+  --color-border: rgba(255, 255, 255, 0.06);
+  --color-border2: rgba(99, 102, 241, 0.3);
+  --color-green: #22c55e;
+  --color-orange: #f97316;
+  --color-red: #ef4444;
+  --color-blue: #3b82f6;
+  --color-indigo: #6366f1;
+  --color-yellow: #eab308;
+  --color-slate: #64748b;
+
+  --font-sans: "SF Pro Text", "SF Pro Display", -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+  --font-mono: "SF Mono", "SFMono-Regular", ui-monospace, "JetBrains Mono", "Roboto Mono", monospace;
+
+  --animate-slide-up: slide-up 0.25s ease forwards;
+
+  @keyframes slide-up {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+}
+
+@layer base {
+  html, body {
+    @apply bg-bg text-text font-sans antialiased overflow-x-hidden;
+  }
+
+  ::-webkit-scrollbar {
+    @apply w-1.5 h-1.5;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-bg2;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-bg4 rounded-full;
+  }
+}
+
+@layer components {
+  .glass {
+    @apply bg-bg2/80 border border-border rounded-2xl backdrop-blur-md shadow-xl shadow-black/20;
+  }
+
+  .glass-hover {
+    @apply transition-all duration-300 hover:bg-bg2 hover:border-white/10 hover:-translate-y-1 hover:shadow-2xl hover:shadow-brand/5;
+  }
+
+  .btn {
+    @apply inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium cursor-pointer transition-all duration-150 border-none;
+  }
+
+  .btn-p {
+    @apply bg-brand text-white hover:bg-indigo-600;
+  }
+
+  .btn-s {
+    @apply bg-bg4 text-text border border-border hover:border-white/15;
+  }
+
+  .btn-d {
+    @apply bg-red-500/10 text-red-400 border border-red-500/25 hover:bg-red-500/20;
+  }
+
+  .btn-g {
+    @apply bg-transparent text-text2 hover:bg-bg4 hover:text-text;
+  }
+
+  .inp {
+    @apply w-full bg-bg border border-border rounded-xl px-3.5 py-2.5 text-text text-sm outline-none transition-all duration-150;
+  }
+
+  .inp:focus {
+    @apply border-brand2 ring-4 ring-brand/15;
+  }
+
+  .lbl {
+    @apply block text-xs font-medium text-text2 mb-1.5;
+  }
+
+  .badge {
+    @apply inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium border;
+  }
+
+  .tbl-wrap {
+    @apply overflow-x-auto rounded-2xl border border-border bg-bg3/50;
+  }
+
+  table {
+    @apply w-full border-collapse text-sm;
+  }
+
+  th {
+    @apply px-3.5 py-2.5 text-left text-text3 text-[11px] font-semibold uppercase tracking-wider border-b border-border bg-bg2/50;
+  }
+
+  td {
+    @apply px-3.5 py-3 border-b border-white/5 text-text2;
+  }
+
+  tr:hover td {
+    @apply bg-bg4/40;
+  }
+
+  .kpi {
+    @apply p-5 rounded-2xl border border-border relative overflow-hidden;
+  }
+
+  .tabs {
+    @apply flex gap-6 border-b border-border mb-6;
+  }
+
+  .tab {
+    @apply px-1 py-3 text-sm font-medium text-text3 cursor-pointer border-b-2 border-transparent transition-all -mb-[1px];
+  }
+
+  .tab.active {
+    @apply text-brand border-brand;
+  }
+
+  /* Layout */
+  #app {
+    @apply flex min-h-screen bg-bg text-text overflow-hidden;
+  }
+
+  #sidebar {
+    @apply w-64 bg-bg2 border-r border-border flex flex-col shrink-0 h-screen;
+  }
+
+  #main {
+    @apply flex-1 flex flex-col min-w-0 h-screen overflow-hidden;
+  }
+
+  #topbar {
+    @apply h-16 border-b border-border flex items-center justify-between px-6 bg-bg/60 backdrop-blur-xl z-30 shrink-0;
+  }
+
+  #content {
+    @apply flex-1 p-6 overflow-y-auto;
+  }
+
+  /* Sidebar Components */
+  .logo {
+    @apply p-6 flex items-center gap-3 mb-2;
+  }
+
+  .logo-icon {
+    @apply w-10 h-10 rounded-xl bg-brand flex items-center justify-center text-white font-black text-xl shadow-lg shadow-brand/20;
+  }
+
+  .logo-title {
+    @apply text-lg font-black tracking-tighter leading-none;
+  }
+
+  .logo-sub {
+    @apply text-[10px] text-text3 font-bold uppercase tracking-widest mt-0.5;
+  }
+
+  .nav {
+    @apply flex-1 px-3 space-y-1 overflow-y-auto;
+  }
+
+  .nav-section {
+    @apply px-3 mt-6 mb-2 text-[10px] font-bold text-text3 uppercase tracking-widest;
+  }
+
+  .nav-item {
+    @apply flex items-center gap-3 px-3 py-2.5 rounded-xl text-[13px] font-medium text-text2 cursor-pointer transition-all hover:bg-bg4 hover:text-text relative;
+  }
+
+  .nav-item .ni {
+    @apply w-8 h-8 flex items-center justify-center rounded-lg bg-transparent transition-colors;
+  }
+
+  .nav-item:hover .ni {
+    @apply bg-bg3;
+  }
+
+  .nav-item.active {
+    @apply bg-brand/10 text-brand;
+  }
+
+  .nav-item.active .ni {
+    @apply bg-brand/20 text-brand;
+  }
+
+  .nav-dot {
+    @apply absolute right-3 w-1.5 h-1.5 rounded-full bg-brand shadow-sm shadow-brand;
+  }
+
+  .nav-footer {
+    @apply p-4 border-t border-border;
+  }
+
+  /* Page Headers */
+  .ph {
+    @apply mb-8;
+  }
+
+  .pt {
+    @apply text-2xl font-black tracking-tight text-text mb-1;
+  }
+
+  .ps {
+    @apply text-sm text-text3;
+  }
+
+  .hrow {
+    @apply flex flex-wrap justify-between items-start mb-6 gap-4;
+  }
+
+  .sdiv {
+    @apply text-[11px] font-bold text-text3 uppercase tracking-widest mb-4 mt-6;
+  }
+
+  /* Detail Fields */
+  .detail-field {
+    @apply flex flex-col gap-1;
+  }
+
+  .df-label {
+    @apply text-[11px] font-bold text-text3 uppercase tracking-wider;
+  }
+
+  .df-value {
+    @apply text-sm text-text font-medium;
+  }
+
+  /* Progress Bars */
+  .bar-wrap {
+    @apply w-full h-1.5 bg-bg4 rounded-full overflow-hidden;
+  }
+
+  .bar-fill {
+    @apply h-full bg-brand rounded-full transition-all duration-500;
+  }
+
+  /* Empty States */
+  .empty {
+    @apply flex flex-col items-center justify-center py-16 text-center;
+  }
+
+  .empty-icon {
+    @apply text-4xl mb-4;
+  }
+
+  .empty-title {
+    @apply text-lg font-bold text-text mb-1;
+  }
+
+  .empty-sub {
+    @apply text-sm text-text3 mb-6 max-w-xs;
+  }
+
+  /* Modals */
+  .overlay {
+    @apply fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 opacity-0 pointer-events-none transition-opacity duration-200;
+  }
+
+  .overlay.open {
+    @apply opacity-100 pointer-events-auto;
+  }
+
+  .modal {
+    @apply bg-bg2 border border-border rounded-3xl w-full max-w-lg shadow-2xl transform scale-95 transition-transform duration-200;
+  }
+
+  .overlay.open .modal {
+    @apply scale-100;
+  }
+
+  .modal-title {
+    @apply p-6 border-b border-border text-lg font-bold flex justify-between items-center;
+  }
+
+  .close-btn {
+    @apply text-text3 hover:text-text transition-colors;
+  }
+
+  .modal form {
+    @apply p-6;
+  }
+
+  /* Toasts */
+  #toast-container {
+    @apply fixed bottom-6 right-6 left-6 z-[100] flex max-w-md flex-col items-end gap-3 sm:left-auto;
+  }
+
+  .toast {
+    @apply flex w-full max-w-md items-start gap-3 px-5 py-3.5 text-left text-sm font-medium leading-snug break-words rounded-2xl shadow-2xl animate-slide-up;
+  }
+
+  .toast-s {
+    @apply bg-bg2 border border-green-500/30 text-green-400;
+  }
+
+  .toast-e {
+    @apply bg-bg2 border border-red-500/30 text-red-400;
+  }
+
+  /* Login */
+  #login-screen {
+    @apply min-h-screen flex items-center justify-center bg-bg relative overflow-hidden p-6;
+  }
+
+  .login-card {
+    @apply relative z-10 animate-slide-up;
+  }
+
+  .dot {
+    @apply w-1.5 h-1.5 rounded-full inline-block;
+  }
+
+  .chip {
+    @apply inline-flex items-center px-2 py-0.5 bg-bg4 border border-border rounded-full text-[10px] text-text2 uppercase font-mono;
+  }
+
+  .b-active { @apply bg-green-500/15 text-green-400 border-green-500/25; }
+  .b-maintenance { @apply bg-orange-500/15 text-orange-400 border-orange-500/25; }
+  .b-transferred { @apply bg-indigo-500/15 text-indigo-400 border-indigo-500/25; }
+  .b-disposed { @apply bg-red-500/15 text-red-400 border-red-500/25; }
+  .b-inactive { @apply bg-slate-500/15 text-slate-400 border-slate-500/25; }
+  .b-open { @apply bg-yellow-500/15 text-yellow-400 border-yellow-500/25; }
+  .b-in_progress { @apply bg-blue-500/15 text-blue-400 border-blue-500/25; }
+  .b-completed { @apply bg-green-500/15 text-green-400 border-green-500/25; }
+  .b-cancelled { @apply bg-slate-500/15 text-slate-400 border-slate-500/25; }
+}
+
+.bg-glow {
+  @apply fixed top-[30%] left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[300px] bg-brand/10 rounded-full blur-[80px] pointer-events-none;
+}

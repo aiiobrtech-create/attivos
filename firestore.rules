@@ -1,0 +1,198 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Document ID: userId (Auth UID)
+    // Fields:
+    //   - id: string (required)
+    //   - name: string (required, size < 100)
+    //   - email: string (required, format: email)
+    //   - role: string (required, enum: ['admin', 'gestor_patrimonial', 'operador', 'auditor', 'viewer'])
+    //
+    // Collection: assets
+    // Document ID: assetId
+    // Fields:
+    //   - id: string (required)
+    //   - asset_code: string (required, size < 50)
+    //   - description: string (required, size < 500)
+    //   - status: string (required)
+    //   - category_id: string (required)
+    //   - cost_center_id: string (required)
+    //   - location_id: string (required)
+    //   - responsible_id: string (required)
+    //   - acquisition_value: number (optional, >= 0)
+    //
+    // [Other collections follow similar validation patterns]
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        ((exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin') ||
+          (request.auth.token.email == "renan.santos95neves@gmail.com" && request.auth.token.email_verified == true) ||
+          (request.auth.token.email == "admin@aiio.com"));
+    }
+
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    function isValidString(val, maxLen) {
+      return val is string && val.size() > 0 && val.size() <= maxLen;
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    function isValidUser(data) {
+      return hasRequiredFields(['id', 'name', 'email', 'role']) &&
+             hasOnlyAllowedFields(['id', 'name', 'email', 'role', 'password']) &&
+             isValidString(data.name, 100) &&
+             isValidEmail(data.email) &&
+             data.role in ['admin', 'gestor_patrimonial', 'operador', 'auditor', 'viewer'];
+    }
+
+    function isValidAsset(data) {
+      return hasRequiredFields(['id', 'asset_code', 'description', 'status', 'category_id', 'cost_center_id', 'location_id', 'responsible_id']) &&
+             isValidString(data.asset_code, 50) &&
+             isValidString(data.description, 500);
+    }
+
+    function isValidMaintenance(data) {
+      return hasRequiredFields(['id', 'order_number', 'asset_id', 'maintenance_type', 'status', 'problem_description', 'opened_at']) &&
+             data.maintenance_type in ['preventive', 'corrective'] &&
+             data.status in ['open', 'in_progress', 'completed', 'cancelled'];
+    }
+
+    function isValidMovement(data) {
+      return hasRequiredFields(['id', 'asset_id', 'movement_type', 'reason', 'movement_date', 'executor']) &&
+             data.movement_type in ['transfer', 'loan', 'return'];
+    }
+
+    function isValidAuditLog(data) {
+      return hasRequiredFields(['id', 'entity_type', 'action', 'user_email', 'description', 'created_at']) &&
+             isValidString(data.user_email, 100) &&
+             isValidString(data.description, 1000);
+    }
+
+    function isValidAssetHistory(data) {
+      return hasRequiredFields(['id', 'asset_id', 'date', 'responsible', 'text']) &&
+             isValidString(data.responsible, 100) &&
+             isValidString(data.text, 2000);
+    }
+
+    function isValidSupplier(data) {
+      return hasRequiredFields(['id', 'name', 'type']) &&
+             isValidString(data.name, 200) &&
+             data.type in ['PF', 'PJ'] &&
+             (!('email' in data) || isValidEmail(data.email)) &&
+             (!('cnpj' in data) || isValidString(data.cnpj, 20)) &&
+             (!('cpf' in data) || isValidString(data.cpf, 20)) &&
+             (!('rg' in data) || isValidString(data.rg, 20));
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Users Collection
+    match /users/{userId} {
+      // Allow get if owner or admin
+      allow get: if isOwner(userId) || isAdmin();
+      
+      // Allow list (queries) if admin OR if the query is filtered by the user's own email
+      allow list: if isAdmin() || (isAuthenticated() && request.query.limit <= 10 && request.auth.token.email != null);
+      
+      // Allow unauthenticated list by name for the login screen (limited to 1 result)
+      allow list: if !isAuthenticated() && request.query.limit == 1;
+
+      allow create: if (isAdmin() || isOwner(userId)) && isValidUser(request.resource.data);
+      allow update: if (isAdmin() || isOwner(userId)) && isValidUser(request.resource.data);
+      allow delete: if isAdmin() && userId != request.auth.uid;
+    }
+
+    // Assets Collection
+    match /assets/{assetId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidAsset(request.resource.data);
+      allow update: if isAuthenticated() && isValidAsset(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    // Categories, Locations, CostCenters
+    match /categories/{id} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin() || (isAuthenticated() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'gestor_patrimonial');
+    }
+    match /locations/{id} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin() || (isAuthenticated() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'gestor_patrimonial');
+    }
+    match /costCenters/{id} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin() || (isAuthenticated() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'gestor_patrimonial');
+    }
+    match /suppliers/{id} {
+      allow read: if isAuthenticated();
+      allow write: if (isAdmin() || (isAuthenticated() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'gestor_patrimonial')) && isValidSupplier(request.resource.data);
+    }
+
+    // Maintenance, Movements, Disposals, AuditLogs
+    match /maintenanceOrders/{id} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated() && isValidMaintenance(request.resource.data);
+      allow delete: if isAuthenticated(); // Permitindo conforme lógica do app
+    }
+    match /movements/{id} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated() && isValidMovement(request.resource.data);
+      allow delete: if isAuthenticated(); // Permitindo conforme lógica do app
+    }
+    match /disposals/{id} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+    match /auditLogs/{id} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidAuditLog(request.resource.data);
+      allow update, delete: if false;
+    }
+    match /assetHistory/{id} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidAssetHistory(request.resource.data);
+      allow update, delete: if isAdmin();
+    }
+  }
+}
