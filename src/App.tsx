@@ -1,9 +1,11 @@
 import * as React from 'react';
 import { useState, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { 
   LayoutDashboard, Package, ArrowLeftRight, Wrench, Trash2, 
   BarChart2, ClipboardList, ShieldCheck, Settings, Users, LogOut, Menu, Bell,
-  Search, Filter, FileText, FileSpreadsheet, LayoutGrid, List, Download, Printer
+  Search, Filter, FileText, FileSpreadsheet, LayoutGrid, List, Download, Printer,
+  Camera, ExternalLink, MapPin,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -23,6 +25,7 @@ import {
   ASSET_IMPORT_STATUS_COLUMN,
   ASSET_IMPORT_STATUS_COLUMN_LEGACY,
   humanizeNetworkError,
+  formatPatrimonioSyncError,
 } from './utils';
 import { Asset, AssetStatus, Category, CostCenter, Location, User, MaintenanceOrder, Movement, Disposal, AuditLog, AssetHistory, Supplier, AppData } from './types';
 import Papa from 'papaparse';
@@ -35,7 +38,16 @@ import {
 } from './supabaseStore';
 import { supabase, supabaseConfigured, checkSupabaseReachable } from './supabaseClient';
 import { labelPayload, AssetQrPreview, AssetBarcodePreview } from './assetLabels';
+import {
+  uploadAssetPhoto,
+  removeAssetPhotoByUrl,
+  removeStorageForDeletedAsset,
+  isAssetPhotoStorageUrl,
+  validateAssetPhotoFile,
+} from './assetPhotoStorage';
 import { downloadAssetCardPdf } from './assetCardPdf';
+import { AssetGeoMap, formatGeoCoords } from './assetGeoMap';
+import { getDeviceGeolocation, normalizeGeoPair, hasValidGeo, parseCoordInput } from './geoUtils';
 import {
   validateImportPrerequisites,
   validateAssetImportRow,
@@ -477,6 +489,7 @@ const AssetDetail: React.FC<{ assetId: string, data: AppData, onNavigate: (r: st
   
   const [tab, setTab] = useState('info');
   const [cardPdfBusy, setCardPdfBusy] = useState(false);
+  const [photoViewerOpen, setPhotoViewerOpen] = useState(false);
   const [historyText, setHistoryText] = useState('');
   const cat = data.categories.find(c => c.id === a.category_id);
   const cc = data.costCenters.find(c => c.id === a.cost_center_id);
@@ -491,6 +504,7 @@ const AssetDetail: React.FC<{ assetId: string, data: AppData, onNavigate: (r: st
   const tabs = [['info', 'Informações'], ['movements', `Movimentações (${movs.length})`], ['maintenance', `Manutenções (${maints.length})`], ['history', `Histórico (${history.length})`]];
 
   return (
+    <>
     <motion.div 
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
@@ -506,7 +520,13 @@ const AssetDetail: React.FC<{ assetId: string, data: AppData, onNavigate: (r: st
       <div className="glass p-6 mb-6">
         <div className="flex justify-between items-start gap-4 flex-wrap">
           <div className="flex gap-4 items-start">
-            <div className="w-16 h-16 rounded-2xl bg-bg4 flex items-center justify-center text-3xl shrink-0 shadow-inner">📦</div>
+            <div className="h-16 w-16 shrink-0 overflow-hidden rounded-2xl border border-border bg-bg4 shadow-inner">
+              {a.photo_url ? (
+                <img src={a.photo_url} alt="" className="h-full w-full object-cover" />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center text-3xl">📦</div>
+              )}
+            </div>
             <div>
               <div className="flex items-center gap-2 mb-1.5">
                 <span className="font-mono text-[12px] text-brand2 font-bold tracking-tight">{a.asset_code}</span>
@@ -518,6 +538,11 @@ const AssetDetail: React.FC<{ assetId: string, data: AppData, onNavigate: (r: st
             </div>
           </div>
           <div className="flex flex-wrap gap-2.5 shrink-0">
+            {a.photo_url && (
+              <button type="button" className="btn btn-s" onClick={() => setPhotoViewerOpen(true)}>
+                <Camera size={14} /> Ver foto
+              </button>
+            )}
             <button
               type="button"
               className="btn btn-s"
@@ -585,8 +610,36 @@ const AssetDetail: React.FC<{ assetId: string, data: AppData, onNavigate: (r: st
                     </div>
                   ))}
                 </div>
+                {a.photo_url && (
+                  <div className="detail-field mt-6 border-t border-border pt-6 sm:col-span-2">
+                    <div className="df-label">Foto do ativo</div>
+                    <div className="mt-2 overflow-hidden rounded-xl border border-border bg-bg4/50">
+                      <a href={a.photo_url} target="_blank" rel="noopener noreferrer" className="block">
+                        <img src={a.photo_url} alt="Foto do ativo" className="max-h-80 w-full object-contain" />
+                      </a>
+                    </div>
+                    <a
+                      href={a.photo_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-2 inline-flex items-center gap-1 text-[11px] font-bold text-brand2 hover:underline"
+                    >
+                      <ExternalLink size={12} />
+                      Abrir imagem em nova aba
+                    </a>
+                  </div>
+                )}
+                {hasValidGeo(a.geo_lat ?? undefined, a.geo_lng ?? undefined) && (
+                  <div className="detail-field mt-6 border-t border-border pt-6 sm:col-span-2">
+                    <div className="df-label">Localização geográfica (mapa)</div>
+                    <p className="mb-3 font-mono text-[12px] text-text2">
+                      {formatGeoCoords(a.geo_lat!, a.geo_lng!)}
+                    </p>
+                    <AssetGeoMap lat={a.geo_lat!} lng={a.geo_lng!} />
+                  </div>
+                )}
                 {a.observations && (
-                  <div className="detail-field mt-6 pt-6 border-t border-border">
+                  <div className="detail-field mt-6 pt-6 border-t border-border sm:col-span-2">
                     <div className="df-label">Observações</div>
                     <div className="df-value text-[13px] text-text2 leading-relaxed">{a.observations}</div>
                   </div>
@@ -736,24 +789,182 @@ const AssetDetail: React.FC<{ assetId: string, data: AppData, onNavigate: (r: st
         </motion.div>
       </AnimatePresence>
     </motion.div>
+
+    {photoViewerOpen &&
+      a.photo_url &&
+      createPortal(
+        <div
+          className="overlay open"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Foto do ativo"
+          onClick={() => setPhotoViewerOpen(false)}
+        >
+          <div className="modal max-w-4xl" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-title">
+              Foto do ativo
+              <button type="button" className="close-btn" aria-label="Fechar" onClick={() => setPhotoViewerOpen(false)}>
+                ✕
+              </button>
+            </div>
+            <div className="flex flex-col items-center gap-4 px-6 pb-6">
+              <img
+                src={a.photo_url}
+                alt={`Foto de ${a.asset_code}`}
+                className="max-h-[min(70vh,800px)] w-full object-contain rounded-xl"
+              />
+              <a
+                href={a.photo_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn btn-s inline-flex items-center gap-2"
+              >
+                <ExternalLink size={14} /> Abrir em nova aba
+              </a>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+    </>
   );
 };
 
-const AssetForm: React.FC<{ assetId?: string, data: AppData, user: User | null, onNavigate: (r: string, p?: any) => void, onSave: (a: Asset) => void, onDelete?: (id: string) => void }> = ({ assetId, data, user, onNavigate, onSave, onDelete }) => {
-  const existing = assetId ? data.assets.find(x => x.id === assetId) : null;
-  const [form, setForm] = useState<Partial<Asset>>(existing || {
-    asset_code: `ATI-${new Date().getFullYear()}-${String(data.assets.length + 1).padStart(5, '0')}`,
-    status: 'active' as AssetStatus,
-  });
+const AssetForm: React.FC<{
+  assetId?: string;
+  data: AppData;
+  user: User | null;
+  onNavigate: (r: string, p?: any) => void;
+  onSave: (a: Asset) => void;
+  onDelete?: (id: string) => void;
+  onToast?: ToastFn;
+}> = ({ assetId, data, user, onNavigate, onSave, onDelete, onToast }) => {
+  const existing = assetId ? data.assets.find((x) => x.id === assetId) : null;
+  const [form, setForm] = useState<Partial<Asset>>(
+    existing || {
+      asset_code: `ATI-${new Date().getFullYear()}-${String(data.assets.length + 1).padStart(5, '0')}`,
+      status: 'active' as AssetStatus,
+    }
+  );
+  const [stagedPhoto, setStagedPhoto] = useState<File | null>(null);
+  const [stagedPreviewUrl, setStagedPreviewUrl] = useState<string | null>(null);
+  const [photoCleared, setPhotoCleared] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [geoBusy, setGeoBusy] = useState(false);
+  const photoInputRef = React.useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!stagedPhoto) {
+      setStagedPreviewUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return null;
+      });
+      return;
+    }
+    const url = URL.createObjectURL(stagedPhoto);
+    setStagedPreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [stagedPhoto]);
 
   const locOptions = filterLocationsForUserPick(data.locations, user);
   const ccOptions = filterCostCentersForUserPick(data.costCenters, user);
 
   const labelPreviewValue = existing ? labelPayload(existing) : (form.asset_code || '').trim();
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const displayedPhotoUrl = stagedPreviewUrl || (!photoCleared ? form.photo_url : undefined);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    onSave({ id: existing?.id || genId(), ...form } as Asset);
+    setSaving(true);
+    try {
+      if (ccOptions.length === 0) {
+        onToast?.(
+          'Não há centro de custo no seu escopo. Peça a um administrador para liberar centros de custo ou seu perfil de acesso.',
+          'e'
+        );
+        return;
+      }
+      if (locOptions.length === 0) {
+        onToast?.(
+          'Não há localização no seu escopo. Peça a um administrador para liberar localizações ou seu perfil de acesso.',
+          'e'
+        );
+        return;
+      }
+      if (!(form.category_id || '').trim()) {
+        onToast?.('Selecione uma categoria.', 'e');
+        return;
+      }
+      if (!(form.cost_center_id || '').trim()) {
+        onToast?.('Selecione um centro de custo.', 'e');
+        return;
+      }
+      if (!(form.location_id || '').trim()) {
+        onToast?.('Selecione uma localização.', 'e');
+        return;
+      }
+      if (!(form.responsible_id || '').trim()) {
+        onToast?.('Selecione um responsável.', 'e');
+        return;
+      }
+
+      const glat = form.geo_lat;
+      const glng = form.geo_lng;
+      const hasLat = glat != null && !Number.isNaN(glat);
+      const hasLng = glng != null && !Number.isNaN(glng);
+      if (hasLat !== hasLng) {
+        onToast?.('Informe latitude e longitude juntas ou deixe os dois em branco.', 'e');
+        return;
+      }
+      if (hasLat && hasLng) {
+        if (glat! < -90 || glat! > 90 || glng! < -180 || glng! > 180) {
+          onToast?.('Latitude deve estar entre −90 e 90; longitude entre −180 e 180.', 'e');
+          return;
+        }
+      }
+
+      const id = existing?.id || genId();
+      let photo_url: string | undefined = photoCleared ? undefined : form.photo_url;
+
+      if (stagedPhoto) {
+        const v = validateAssetPhotoFile(stagedPhoto);
+        if (v) {
+          onToast?.(v, 'e');
+          return;
+        }
+        try {
+          photo_url = await uploadAssetPhoto(stagedPhoto, id);
+        } catch (err) {
+          onToast?.(humanizeNetworkError(err, 'Falha ao enviar a foto.'), 'e');
+          return;
+        }
+      }
+
+      if (
+        existing?.photo_url &&
+        existing.photo_url !== photo_url &&
+        isAssetPhotoStorageUrl(existing.photo_url)
+      ) {
+        await removeAssetPhotoByUrl(existing.photo_url).catch(() => {});
+      }
+
+      const geoNorm = normalizeGeoPair(form.geo_lat, form.geo_lng);
+      onSave({
+        ...form,
+        id,
+        photo_url,
+        geo_lat: geoNorm.geo_lat,
+        geo_lng: geoNorm.geo_lng,
+        category_id: form.category_id!.trim(),
+        cost_center_id: form.cost_center_id!.trim(),
+        location_id: form.location_id!.trim(),
+        responsible_id: form.responsible_id!.trim(),
+      } as Asset);
+      setStagedPhoto(null);
+      setPhotoCleared(false);
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -798,10 +1009,19 @@ const AssetForm: React.FC<{ assetId?: string, data: AppData, user: User | null, 
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                 <div>
-                  <label className="lbl">Categoria</label>
-                  <select className="inp" value={form.category_id || ''} onChange={e => setForm({...form, category_id: e.target.value})}>
+                  <label className="lbl">Categoria *</label>
+                  <select
+                    className="inp"
+                    required
+                    value={form.category_id || ''}
+                    onChange={(e) => setForm({ ...form, category_id: e.target.value })}
+                  >
                     <option value="">Selecionar...</option>
-                    {data.categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    {data.categories.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
                   </select>
                 </div>
                 <div>
@@ -830,6 +1050,83 @@ const AssetForm: React.FC<{ assetId?: string, data: AppData, user: User | null, 
                   </p>
                 )}
               </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="glass p-6">
+          <div className="sdiv !mt-0">Foto do ativo</div>
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+            <div className="flex min-h-[140px] min-w-0 flex-1 items-center justify-center overflow-hidden rounded-2xl border border-border bg-bg4/40 sm:max-w-xs">
+              {displayedPhotoUrl ? (
+                <img
+                  src={displayedPhotoUrl}
+                  alt="Prévia da foto do ativo"
+                  className="max-h-56 w-full object-contain"
+                />
+              ) : (
+                <div className="flex flex-col items-center gap-2 p-6 text-center text-text3">
+                  <Camera size={32} strokeWidth={1.25} className="opacity-50" />
+                  <span className="text-[11px] font-medium">Nenhuma foto selecionada</span>
+                </div>
+              )}
+            </div>
+            <div className="flex flex-col gap-3">
+              <input
+                ref={photoInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/gif"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (!f) return;
+                  const msg = validateAssetPhotoFile(f);
+                  if (msg) {
+                    onToast?.(msg, 'e');
+                    e.target.value = '';
+                    return;
+                  }
+                  setPhotoCleared(false);
+                  setStagedPhoto(f);
+                  e.target.value = '';
+                }}
+              />
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  className="btn btn-s"
+                  disabled={user?.role === 'viewer' || saving}
+                  onClick={() => photoInputRef.current?.click()}
+                >
+                  <Camera size={16} className="mr-1" />
+                  {displayedPhotoUrl ? 'Trocar foto' : 'Enviar foto'}
+                </button>
+                {(displayedPhotoUrl || form.photo_url) && (
+                  <button
+                    type="button"
+                    className="btn btn-s border border-red-500/30 text-red-400 hover:bg-red-500/10"
+                    disabled={user?.role === 'viewer' || saving}
+                    onClick={() => {
+                      setStagedPhoto(null);
+                      setPhotoCleared(true);
+                      setForm((f) => ({ ...f, photo_url: undefined }));
+                    }}
+                  >
+                    Remover foto
+                  </button>
+                )}
+              </div>
+              {displayedPhotoUrl && (
+                <a
+                  href={displayedPhotoUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-[11px] font-bold text-brand2 hover:underline"
+                >
+                  <ExternalLink size={12} />
+                  Abrir em nova aba
+                </a>
+              )}
             </div>
           </div>
         </div>
@@ -868,27 +1165,125 @@ const AssetForm: React.FC<{ assetId?: string, data: AppData, user: User | null, 
         <div className="glass p-6">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
             <div>
-              <label className="lbl">Centro de Custo</label>
-              <select className="inp" value={form.cost_center_id || ''} onChange={e => setForm({...form, cost_center_id: e.target.value})}>
+              <label className="lbl">Centro de Custo *</label>
+              <select
+                className="inp"
+                required
+                value={form.cost_center_id || ''}
+                onChange={(e) => setForm({ ...form, cost_center_id: e.target.value })}
+              >
                 <option value="">Selecionar...</option>
-                {ccOptions.map(c => <option key={c.id} value={c.id}>{c.code} – {c.name}</option>)}
+                {ccOptions.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.code} – {c.name}
+                  </option>
+                ))}
               </select>
             </div>
             <div>
-              <label className="lbl">Localização</label>
-              <select className="inp" value={form.location_id || ''} onChange={e => setForm({...form, location_id: e.target.value})}>
+              <label className="lbl">Localização *</label>
+              <select
+                className="inp"
+                required
+                value={form.location_id || ''}
+                onChange={(e) => setForm({ ...form, location_id: e.target.value })}
+              >
                 <option value="">Selecionar...</option>
-                {locOptions.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                {locOptions.map((l) => (
+                  <option key={l.id} value={l.id}>
+                    {l.name}
+                  </option>
+                ))}
               </select>
             </div>
             <div>
-              <label className="lbl">Responsável</label>
-              <select className="inp" value={form.responsible_id || ''} onChange={e => setForm({...form, responsible_id: e.target.value})}>
+              <label className="lbl">Responsável *</label>
+              <select
+                className="inp"
+                required
+                value={form.responsible_id || ''}
+                onChange={(e) => setForm({ ...form, responsible_id: e.target.value })}
+              >
                 <option value="">Selecionar...</option>
-                {data.users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                {data.users.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.name}
+                  </option>
+                ))}
               </select>
             </div>
           </div>
+        </div>
+
+        <div className="glass p-6">
+          <div className="sdiv !mt-0">Localização geográfica (mapa)</div>
+          <div className="mb-4 mt-4 flex flex-wrap gap-2">
+            <button
+              type="button"
+              className="btn btn-s"
+              disabled={user?.role === 'viewer' || saving || geoBusy}
+              onClick={async () => {
+                if (user?.role === 'viewer' || saving || geoBusy) return;
+                setGeoBusy(true);
+                try {
+                  const { lat, lng } = await getDeviceGeolocation();
+                  setForm((f) => ({ ...f, geo_lat: lat, geo_lng: lng }));
+                  onToast?.('Localização obtida.', 's');
+                } catch (err) {
+                  onToast?.(err instanceof Error ? err.message : 'Não foi possível obter a posição.', 'e');
+                } finally {
+                  setGeoBusy(false);
+                }
+              }}
+            >
+              <MapPin size={14} /> {geoBusy ? 'Obtendo…' : 'Usar posição deste dispositivo'}
+            </button>
+            {(form.geo_lat != null || form.geo_lng != null) && (
+              <button
+                type="button"
+                className="btn btn-s border border-red-500/30 text-red-400 hover:bg-red-500/10"
+                disabled={user?.role === 'viewer' || saving}
+                onClick={() => setForm((f) => ({ ...f, geo_lat: undefined, geo_lng: undefined }))}
+              >
+                Limpar coordenadas
+              </button>
+            )}
+          </div>
+          <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div>
+              <label className="lbl">Latitude</label>
+              <input
+                type="text"
+                inputMode="decimal"
+                className="inp font-mono text-[13px]"
+                placeholder="ex: -23.550520"
+                disabled={user?.role === 'viewer'}
+                value={form.geo_lat === undefined || form.geo_lat === null ? '' : String(form.geo_lat)}
+                onChange={(e) => {
+                  const n = parseCoordInput(e.target.value);
+                  setForm((f) => ({ ...f, geo_lat: n }));
+                }}
+              />
+            </div>
+            <div>
+              <label className="lbl">Longitude</label>
+              <input
+                type="text"
+                inputMode="decimal"
+                className="inp font-mono text-[13px]"
+                placeholder="ex: -46.633308"
+                disabled={user?.role === 'viewer'}
+                value={form.geo_lng === undefined || form.geo_lng === null ? '' : String(form.geo_lng)}
+                onChange={(e) => {
+                  const n = parseCoordInput(e.target.value);
+                  setForm((f) => ({ ...f, geo_lng: n }));
+                }}
+              />
+            </div>
+          </div>
+          {hasValidGeo(form.geo_lat ?? undefined, form.geo_lng ?? undefined) && (
+            <AssetGeoMap lat={form.geo_lat!} lng={form.geo_lng!} className="mt-2" />
+          )}
         </div>
 
         <div className="flex justify-between items-center mt-4">
@@ -899,7 +1294,9 @@ const AssetForm: React.FC<{ assetId?: string, data: AppData, user: User | null, 
           </div>
           <div className="flex gap-3">
             <button type="button" className="btn btn-s px-8" onClick={() => onNavigate('assets')}>Cancelar</button>
-            <button type="submit" className="btn btn-p px-8">{existing ? 'Salvar Alterações' : 'Finalizar Cadastro'}</button>
+            <button type="submit" className="btn btn-p px-8" disabled={saving}>
+              {saving ? 'Salvando…' : existing ? 'Salvar Alterações' : 'Finalizar Cadastro'}
+            </button>
           </div>
         </div>
       </form>
@@ -1469,17 +1866,43 @@ const MovementsView: React.FC<{
   );
 };
 
+/** Destinos da movimentação são persistidos como nomes; opções do select devem usar o mesmo valor. */
+function normalizeMovementForForm(m: Movement, data: AppData): Partial<Movement> {
+  const loc =
+    m.to_location != null && String(m.to_location).length > 0
+      ? data.locations.find((l) => l.name === m.to_location || l.id === m.to_location)
+      : undefined;
+  const cc =
+    m.to_cost_center != null && String(m.to_cost_center).length > 0
+      ? data.costCenters.find((c) => c.name === m.to_cost_center || c.id === m.to_cost_center)
+      : undefined;
+  const u =
+    m.to_responsible != null && String(m.to_responsible).length > 0
+      ? data.users.find((x) => x.name === m.to_responsible || x.id === m.to_responsible)
+      : undefined;
+  return {
+    ...m,
+    to_location: loc?.name ?? m.to_location,
+    to_cost_center: cc?.name ?? m.to_cost_center,
+    to_responsible: u?.name ?? m.to_responsible,
+  };
+}
+
 const MovementForm: React.FC<{ movementId?: string, assetId?: string, data: AppData, onNavigate: (r: string, p?: any) => void, onSave: (m: Movement) => void, onDelete?: (id: string) => void, user: User | null }> = ({ movementId, assetId, data, onNavigate, onSave, onDelete, user }) => {
   const locPick = filterLocationsForUserPick(data.locations, user);
   const ccPick = filterCostCentersForUserPick(data.costCenters, user);
   const existing = movementId ? data.movements.find(m => m.id === movementId) : null;
   
-  const [form, setForm] = useState<Partial<Movement>>(existing || {
-    asset_id: assetId || '',
-    movement_type: 'transfer',
-    movement_date: new Date().toISOString().slice(0, 16),
-    executor: user?.name || '',
-  });
+  const [form, setForm] = useState<Partial<Movement>>(() =>
+    existing
+      ? normalizeMovementForForm(existing, data)
+      : {
+          asset_id: assetId || '',
+          movement_type: 'transfer',
+          movement_date: new Date().toISOString().slice(0, 16),
+          executor: user?.name || '',
+        }
+  );
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -1535,34 +1958,55 @@ const MovementForm: React.FC<{ movementId?: string, assetId?: string, data: AppD
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-6">
           <div>
             <label className="lbl">Destino (Localização)</label>
-            <select className="inp" value={form.to_location} onChange={e => {
-              const loc = data.locations.find(l => l.id === e.target.value);
-              setForm({...form, to_location: loc?.name});
-            }}>
+            <select
+              className="inp"
+              value={form.to_location ?? ''}
+              onChange={(e) =>
+                setForm({ ...form, to_location: e.target.value || undefined })
+              }
+            >
               <option value="">Selecionar...</option>
-              {locPick.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+              {locPick.map((l) => (
+                <option key={l.id} value={l.name}>
+                  {l.name}
+                </option>
+              ))}
             </select>
           </div>
           <div>
             <label className="lbl">Destino (Centro de Custo)</label>
-            <select className="inp" value={form.to_cost_center} onChange={e => {
-              const cc = data.costCenters.find(c => c.id === e.target.value);
-              setForm({...form, to_cost_center: cc?.name});
-            }}>
+            <select
+              className="inp"
+              value={form.to_cost_center ?? ''}
+              onChange={(e) =>
+                setForm({ ...form, to_cost_center: e.target.value || undefined })
+              }
+            >
               <option value="">Selecionar...</option>
-              {ccPick.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              {ccPick.map((c) => (
+                <option key={c.id} value={c.name}>
+                  {c.code} – {c.name}
+                </option>
+              ))}
             </select>
           </div>
         </div>
 
         <div className="mb-6">
           <label className="lbl">Novo Responsável</label>
-          <select className="inp" value={form.to_responsible} onChange={e => {
-            const u = data.users.find(x => x.id === e.target.value);
-            setForm({...form, to_responsible: u?.name});
-          }}>
+          <select
+            className="inp"
+            value={form.to_responsible ?? ''}
+            onChange={(e) =>
+              setForm({ ...form, to_responsible: e.target.value || undefined })
+            }
+          >
             <option value="">Selecionar...</option>
-            {data.users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+            {data.users.map((u) => (
+              <option key={u.id} value={u.name}>
+                {u.name}
+              </option>
+            ))}
           </select>
         </div>
 
@@ -3054,8 +3498,8 @@ export default function App() {
     if (q) {
       list = list.filter(
         (a) =>
-          a.description.toLowerCase().includes(q) ||
-          a.asset_code.toLowerCase().includes(q) ||
+          (a.description || '').toLowerCase().includes(q) ||
+          (a.asset_code || '').toLowerCase().includes(q) ||
           (a.patrimonial_code || '').toLowerCase().includes(q)
       );
     }
@@ -3093,9 +3537,9 @@ export default function App() {
       syncAppDataToSupabase(prev, next).catch((err) => {
         console.error('Falha ao sincronizar com o Supabase', err);
         toast(
-          humanizeNetworkError(
+          formatPatrimonioSyncError(
             err,
-            err instanceof Error ? err.message : 'Não foi possível salvar no servidor. Verifique a conexão ou faça login novamente.'
+            'Não foi possível salvar no servidor. Verifique a conexão, o painel do Supabase ou se há políticas RLS bloqueando. Abra o console (F12) para detalhes.'
           ),
           'e'
         );
@@ -4033,7 +4477,13 @@ export default function App() {
     });
     try {
       await syncAppDataToSupabase(syncPrev, syncNext);
-      toast('Ativo excluído com sucesso!');
+      const storageOk = await removeStorageForDeletedAsset(id, a?.photo_url);
+      toast(
+        storageOk
+          ? 'Ativo excluído com sucesso!'
+          : 'Ativo excluído, mas a foto não foi totalmente removida do Storage (permissões ou rede). Verifique o bucket asset-photos no Supabase.',
+        storageOk ? 's' : 'e'
+      );
       navigate('assets');
     } catch (error: unknown) {
       setData(syncPrev);
@@ -4510,8 +4960,21 @@ export default function App() {
               </motion.div>
             )}
             {currentRoute === 'asset-detail' && <AssetDetail key="detail" assetId={routeParams.id} data={scopedData} onNavigate={navigate} onAction={(type, id) => { setModal({ type, assetId: id }); setModalForm({ asset_id: id, movement_date: new Date().toISOString().slice(0, 16), disposal_date: new Date().toISOString().slice(0, 10), reason: 'other' }); }} onSaveHistory={handleSaveAssetHistory} user={user} onToast={toast} />}
-            {currentRoute === 'assets-new' && <AssetForm key="new" data={data} user={user} onNavigate={navigate} onSave={handleSaveAsset} />}
-            {currentRoute === 'assets-edit' && <AssetForm key="edit" assetId={routeParams.id} data={data} user={user} onNavigate={navigate} onSave={handleSaveAsset} onDelete={handleDeleteAsset} />}
+            {currentRoute === 'assets-new' && (
+              <AssetForm key="new" data={data} user={user} onNavigate={navigate} onSave={handleSaveAsset} onToast={toast} />
+            )}
+            {currentRoute === 'assets-edit' && (
+              <AssetForm
+                key={`asset-edit-${routeParams.id}`}
+                assetId={routeParams.id}
+                data={data}
+                user={user}
+                onNavigate={navigate}
+                onSave={handleSaveAsset}
+                onDelete={handleDeleteAsset}
+                onToast={toast}
+              />
+            )}
             {currentRoute === 'maintenance' && (
               <MaintenanceView
                 key="maint"
@@ -4522,8 +4985,12 @@ export default function App() {
                 onToast={toast}
               />
             )}
-            {currentRoute === 'maintenance-new' && <MaintenanceForm key="maint-new" assetId={routeParams.assetId} data={data} user={user} onNavigate={navigate} onSave={handleSaveMaintenance} />}
-            {currentRoute === 'maintenance-edit' && <MaintenanceForm key="maint-edit" orderId={routeParams.id} data={data} user={user} onNavigate={navigate} onSave={handleSaveMaintenance} onDelete={handleDeleteMaintenance} />}
+            {currentRoute === 'maintenance-new' && (
+              <MaintenanceForm key={`maint-new-${routeParams.assetId || 'none'}`} assetId={routeParams.assetId} data={data} user={user} onNavigate={navigate} onSave={handleSaveMaintenance} />
+            )}
+            {currentRoute === 'maintenance-edit' && (
+              <MaintenanceForm key={`maint-edit-${routeParams.id}`} orderId={routeParams.id} data={data} user={user} onNavigate={navigate} onSave={handleSaveMaintenance} onDelete={handleDeleteMaintenance} />
+            )}
             {currentRoute === 'movements' && (
               <MovementsView
                 key="movements"
@@ -4535,16 +5002,26 @@ export default function App() {
               />
             )}
             {currentRoute === 'movements-new' && <MovementForm key="move-new" data={data} onNavigate={navigate} onSave={handleSaveMovement} user={user} />}
-            {currentRoute === 'movements-edit' && <MovementForm key="move-edit" movementId={routeParams.id} data={data} onNavigate={navigate} onSave={handleSaveMovement} onDelete={handleDeleteMovement} user={user} />}
+            {currentRoute === 'movements-edit' && (
+              <MovementForm key={`move-edit-${routeParams.id}`} movementId={routeParams.id} data={data} onNavigate={navigate} onSave={handleSaveMovement} onDelete={handleDeleteMovement} user={user} />
+            )}
             {currentRoute === 'disposals' && <DisposalsView key="disposals" data={scopedData} onToast={toast} />}
             {currentRoute === 'audit' && <AuditView key="audit" data={data} onToast={toast} />}
             {currentRoute === 'settings' && (
               <SettingsView key="settings" data={data} onNavigate={navigate} user={user} onToast={toast} />
             )}
-            {currentRoute === 'settings-category-edit' && <CategoryForm key="cat-edit" categoryId={routeParams.id} data={data} onNavigate={navigate} onSave={handleSaveCategory} onDelete={handleDeleteCategory} />}
-            {currentRoute === 'settings-location-edit' && <LocationForm key="loc-edit" locationId={routeParams.id} data={data} onNavigate={navigate} onSave={handleSaveLocation} onDelete={handleDeleteLocation} />}
-            {currentRoute === 'settings-costcenter-edit' && <CostCenterForm key="cc-edit" costCenterId={routeParams.id} data={data} onNavigate={navigate} onSave={handleSaveCostCenter} onDelete={handleDeleteCostCenter} />}
-            {currentRoute === 'settings-supplier-edit' && <SupplierForm key="sup-edit" supplierId={routeParams.id} data={data} onNavigate={navigate} onSave={handleSaveSupplier} onDelete={handleDeleteSupplier} />}
+            {currentRoute === 'settings-category-edit' && (
+              <CategoryForm key={`cat-edit-${routeParams.id}`} categoryId={routeParams.id} data={data} onNavigate={navigate} onSave={handleSaveCategory} onDelete={handleDeleteCategory} />
+            )}
+            {currentRoute === 'settings-location-edit' && (
+              <LocationForm key={`loc-edit-${routeParams.id}`} locationId={routeParams.id} data={data} onNavigate={navigate} onSave={handleSaveLocation} onDelete={handleDeleteLocation} />
+            )}
+            {currentRoute === 'settings-costcenter-edit' && (
+              <CostCenterForm key={`cc-edit-${routeParams.id}`} costCenterId={routeParams.id} data={data} onNavigate={navigate} onSave={handleSaveCostCenter} onDelete={handleDeleteCostCenter} />
+            )}
+            {currentRoute === 'settings-supplier-edit' && (
+              <SupplierForm key={`sup-edit-${routeParams.id}`} supplierId={routeParams.id} data={data} onNavigate={navigate} onSave={handleSaveSupplier} onDelete={handleDeleteSupplier} />
+            )}
             {currentRoute === 'admin-users' && (
               <AdminUsersView
                 key="users"

@@ -151,7 +151,9 @@ CREATE TABLE IF NOT EXISTS public.assets (
   useful_life_months integer NULL,
   observations text NULL,
   photo_url text NULL,
-  label_scan_value text NULL
+  label_scan_value text NULL,
+  geo_lat double precision NULL,
+  geo_lng double precision NULL
 );
 
 CREATE INDEX IF NOT EXISTS assets_category_id_idx ON public.assets (category_id);

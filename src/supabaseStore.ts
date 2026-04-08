@@ -176,6 +176,8 @@ const ASSET_DB_KEYS = [
   'observations',
   'photo_url',
   'label_scan_value',
+  'geo_lat',
+  'geo_lng',
 ] as const;
 
 function sanitizeAssetRow(row: Asset): Asset {

@@ -168,6 +168,54 @@ export function humanizeNetworkError(error: unknown, fallback = 'Operação não
   return msg || fallback;
 }
 
+/**
+ * Mensagem para toast após falha de sync (Supabase/PostgREST nem sempre lança Error).
+ */
+export function formatPatrimonioSyncError(error: unknown, fallback: string): string {
+  const net = humanizeNetworkError(error, '');
+  if (
+    net.includes('conectar ao servidor') ||
+    net.includes('VITE_SUPABASE_URL') ||
+    net.includes('requisições paralelas')
+  ) {
+    return net;
+  }
+
+  let message = '';
+  if (error instanceof Error && error.message.trim()) {
+    message = error.message.trim();
+  } else if (typeof error === 'string' && error.trim()) {
+    message = error.trim();
+  } else if (error && typeof error === 'object' && 'message' in error) {
+    message = String((error as { message: unknown }).message || '').trim();
+  }
+
+  const parts: string[] = [];
+  if (message) parts.push(message);
+
+  if (error && typeof error === 'object') {
+    const o = error as Record<string, unknown>;
+    const details = o.details != null ? String(o.details).trim() : '';
+    const hint = o.hint != null ? String(o.hint).trim() : '';
+    if (details && !message.includes(details)) parts.push(`Detalhes: ${details}`);
+    if (hint && !message.includes(hint)) parts.push(`Dica: ${hint}`);
+  }
+
+  const joined = parts.filter(Boolean).join(' — ');
+  if (joined) return joined;
+
+  try {
+    if (error && typeof error === 'object') {
+      const s = JSON.stringify(error);
+      if (s && s !== '{}') return s;
+    }
+  } catch {
+    /* ignore */
+  }
+
+  return fallback;
+}
+
 /** Próximo código no padrão ATI-AAAA-##### com base nos ativos já existentes (importação e cadastro). */
 export function generateNextAssetCode(existingAssets: readonly { asset_code: string }[]): string {
   const year = new Date().getFullYear();

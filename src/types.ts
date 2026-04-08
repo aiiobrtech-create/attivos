@@ -78,6 +78,10 @@ export interface Asset {
   photo_url?: string;
   /** Texto fixo codificado no QR/código de barras no momento do cadastro (não alterar). */
   label_scan_value?: string;
+  /** Latitude WGS84 (opcional), para mapa. */
+  geo_lat?: number;
+  /** Longitude WGS84 (opcional), para mapa. */
+  geo_lng?: number;
 }
 
 export interface MaintenanceOrder {
