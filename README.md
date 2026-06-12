@@ -17,7 +17,33 @@ Sistema de gestão de ativos imobilizados (interface web).
 No **SQL Editor** do projeto:
 
 1. Se você usou a versão antiga com tabela `public.users`, rode antes `supabase/migrate_legacy_users.sql`.
-2. Execute o arquivo **`supabase/schema.sql`** (perfis, RLS, trigger em `auth.users`).
+2. **Projeto novo:** execute **`supabase/schema.sql`** (perfis, RLS, trigger em `auth.users`, colunas atuais).
+3. **Projeto já existente:** execute **`supabase/migration_apply_pending.sql`** (fotos múltiplas, quantidade, garantia). Se faltar o bucket de fotos, rode também **`supabase/storage_asset_photos.sql`**.
+
+Migrações individuais (opcional): `migration_assets_photo_urls.sql`, `migration_assets_quantity.sql`, `migration_assets_warranty_expiry.sql`.
+
+### Integração frontend ↔ Supabase
+
+| Camada | O que configura |
+|--------|-----------------|
+| **Frontend (Vite)** | `.env` com `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` |
+| **Dev local** | Proxy `/supabase` no Vite (`vite.config.ts`) — evita CORS ao abrir pelo IP da rede |
+| **Produção** | Build com `.env.production`; o browser fala direto com a URL do Supabase |
+| **Auth** | Site URL e Redirect URLs no painel Supabase |
+| **Dados** | `schema.sql` ou `migration_apply_pending.sql` |
+| **Fotos** | Bucket `asset-photos` + políticas em `storage_asset_photos.sql` |
+| **Admin usuários** | Edge Functions `admin-create-user`, `admin-update-user`, `admin-delete-user` |
+
+Checklist rápido antes de subir:
+
+```bash
+cp .env.example .env          # preencher VITE_*
+npm install
+npm run lint                  # TypeScript
+npm run build                 # bundle de produção em dist/
+```
+
+Em dev: `npm run dev` → http://localhost:4000 (API Supabase via proxy local).
 
 ### 2) Auth (recomendado para desenvolvimento)
 

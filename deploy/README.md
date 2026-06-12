@@ -31,7 +31,7 @@ Modelo: copie `.env.production.example` para `.env.production`, preencha e use n
    supabase functions deploy admin-delete-user
    ```
 
-3. Schema SQL: aplique `supabase/schema.sql` (e migrações necessárias) no projeto correto.
+3. Schema SQL: aplique `supabase/schema.sql` (instalação nova) ou `supabase/migration_apply_pending.sql` (projeto já em uso). Bucket de fotos: `supabase/storage_asset_photos.sql`.
 
 ## 3. Build local e envio dos arquivos
 

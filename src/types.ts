@@ -68,14 +68,20 @@ export interface Asset {
   supplier_id?: string;
   acquisition_value?: number;
   acquisition_date?: string;
+  /** Quantidade de unidades do bem (padrão 1). */
+  quantity?: number;
   serial_number?: string;
   manufacturer?: string;
   brand?: string;
   model?: string;
   invoice_number?: string;
   useful_life_months?: number;
+  /** Data de expiração da garantia (AAAA-MM-DD). */
+  warranty_expiry?: string;
   observations?: string;
-  photo_url?: string;
+  photo_url?: string | null;
+  /** Até 10 URLs públicas no Storage (photo_url mantém a primeira para compatibilidade). */
+  photo_urls?: string[] | null;
   /** Texto fixo codificado no QR/código de barras no momento do cadastro (não alterar). */
   label_scan_value?: string;
   /** Latitude WGS84 (opcional), para mapa. */

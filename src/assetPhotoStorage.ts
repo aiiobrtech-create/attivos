@@ -1,6 +1,7 @@
 import { supabase } from './supabaseClient';
 
 export const ASSET_PHOTOS_BUCKET = 'asset-photos';
+export const MAX_ASSET_PHOTOS = 10;
 
 const MAX_BYTES = 5 * 1024 * 1024;
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
@@ -18,6 +19,24 @@ function extensionFromMime(mime: string, fallbackName: string): string {
     return fromName === 'jpeg' ? 'jpg' : fromName;
   }
   return 'jpg';
+}
+
+export function getAssetPhotoUrls(asset: { photo_urls?: string[] | null; photo_url?: string | null }): string[] {
+  if (Array.isArray(asset.photo_urls) && asset.photo_urls.length) {
+    return asset.photo_urls.filter((u): u is string => typeof u === 'string' && u.length > 0);
+  }
+  if (asset.photo_url) return [asset.photo_url];
+  return [];
+}
+
+/** Normaliza lista de URLs para persistência (photo_urls + photo_url legado). */
+export function buildAssetPhotoFields(urls: string[]): {
+  photo_url: string | null;
+  photo_urls: string[] | null;
+} {
+  const clean = urls.filter(Boolean).slice(0, MAX_ASSET_PHOTOS);
+  if (!clean.length) return { photo_url: null, photo_urls: null };
+  return { photo_url: clean[0], photo_urls: clean };
 }
 
 export function validateAssetPhotoFile(file: File): string | null {
@@ -72,17 +91,33 @@ export async function removeAssetPhotoByUrl(publicUrl: string): Promise<boolean>
   if (!path) return true;
   const { error } = await supabase.storage.from(ASSET_PHOTOS_BUCKET).remove([path]);
   if (error) {
+    const msg = (error.message || '').toLowerCase();
+    if (msg.includes('not found') || msg.includes('object not found')) return true;
     console.warn('removeAssetPhotoByUrl:', error);
     return false;
   }
   return true;
 }
 
+/** Remove várias fotos do Storage; retorna URLs que falharam. */
+export async function removeAssetPhotosByUrls(urls: string[]): Promise<string[]> {
+  const failed: string[] = [];
+  for (const url of urls) {
+    if (!isAssetPhotoStorageUrl(url)) continue;
+    const ok = await removeAssetPhotoByUrl(url);
+    if (!ok) failed.push(url);
+  }
+  return failed;
+}
+
 /**
- * Após excluir o ativo no banco: remove objetos em `assets/{assetId}/` e a URL conhecida em `photo_url`.
+ * Após excluir o ativo no banco: remove objetos em `assets/{assetId}/` e URLs conhecidas.
  * Retorna false se o Storage reportou erro em alguma etapa relevante; true se não havia nada a limpar ou tudo ok.
  */
-export async function removeStorageForDeletedAsset(assetId: string, photoUrl?: string | null): Promise<boolean> {
+export async function removeStorageForDeletedAsset(
+  assetId: string,
+  knownPhotoUrls?: string[] | null
+): Promise<boolean> {
   let anyFailure = false;
   const folder = `assets/${assetId}`;
   const { data: items, error: listErr } = await supabase.storage.from(ASSET_PHOTOS_BUCKET).list(folder, { limit: 200 });
@@ -97,13 +132,14 @@ export async function removeStorageForDeletedAsset(assetId: string, photoUrl?: s
       anyFailure = true;
     }
   }
-  if (photoUrl && isAssetPhotoStorageUrl(photoUrl)) {
-    const ok = await removeAssetPhotoByUrl(photoUrl);
+  const urls = [...new Set((knownPhotoUrls ?? []).filter(isAssetPhotoStorageUrl))];
+  for (const url of urls) {
+    const ok = await removeAssetPhotoByUrl(url);
     if (!ok) anyFailure = true;
   }
-  const hadUrlInBucket = !!(photoUrl && isAssetPhotoStorageUrl(photoUrl));
+  const hadKnownUrls = urls.length > 0;
   const hadFolderFiles = !listErr && (items?.length ?? 0) > 0;
-  const nothingToDo = !hadFolderFiles && !hadUrlInBucket && !listErr;
+  const nothingToDo = !hadFolderFiles && !hadKnownUrls && !listErr;
   if (nothingToDo) return true;
   return !anyFailure;
 }

@@ -5,7 +5,7 @@ import {
   LayoutDashboard, Package, ArrowLeftRight, Wrench, Trash2, 
   BarChart2, ClipboardList, ShieldCheck, Settings, Users, LogOut, Menu, Bell,
   Search, Filter, FileText, FileSpreadsheet, LayoutGrid, List, Download, Printer,
-  Camera, ExternalLink, MapPin,
+  Camera, ExternalLink, MapPin, ChevronLeft, ChevronRight,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -41,9 +41,13 @@ import { labelPayload, AssetQrPreview, AssetBarcodePreview } from './assetLabels
 import {
   uploadAssetPhoto,
   removeAssetPhotoByUrl,
+  removeAssetPhotosByUrls,
   removeStorageForDeletedAsset,
   isAssetPhotoStorageUrl,
   validateAssetPhotoFile,
+  getAssetPhotoUrls,
+  buildAssetPhotoFields,
+  MAX_ASSET_PHOTOS,
 } from './assetPhotoStorage';
 import { downloadAssetCardPdf } from './assetCardPdf';
 import { AssetGeoMap, formatGeoCoords } from './assetGeoMap';
@@ -483,6 +487,103 @@ const Dashboard: React.FC<{ data: AppData; onNavigate: (r: string, p?: any) => v
   );
 };
 
+const AssetPhotosModal: React.FC<{
+  photos: string[];
+  initialIndex?: number;
+  title: string;
+  onClose: () => void;
+}> = ({ photos, initialIndex = 0, title, onClose }) => {
+  const [index, setIndex] = useState(initialIndex);
+  const safeIndex = Math.min(Math.max(index, 0), Math.max(photos.length - 1, 0));
+  const current = photos[safeIndex];
+
+  useEffect(() => {
+    setIndex(initialIndex);
+  }, [initialIndex, photos]);
+
+  if (!photos.length || !current) return null;
+
+  return createPortal(
+    <div
+      className="overlay open"
+      role="dialog"
+      aria-modal="true"
+      aria-label={title}
+      onClick={onClose}
+    >
+      <div className="modal max-w-4xl" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-title">
+          {title}
+          {photos.length > 1 && (
+            <span className="ml-2 text-[12px] font-medium text-text3">
+              {safeIndex + 1} / {photos.length}
+            </span>
+          )}
+          <button type="button" className="close-btn" aria-label="Fechar" onClick={onClose}>
+            ✕
+          </button>
+        </div>
+        <div className="flex flex-col items-center gap-4 px-6 pb-6">
+          <div className="relative flex w-full items-center justify-center">
+            {photos.length > 1 && (
+              <button
+                type="button"
+                className="btn btn-s absolute left-0 z-10"
+                aria-label="Foto anterior"
+                disabled={safeIndex <= 0}
+                onClick={() => setIndex((i) => Math.max(0, i - 1))}
+              >
+                <ChevronLeft size={18} />
+              </button>
+            )}
+            <img
+              src={current}
+              alt={`${title} ${safeIndex + 1}`}
+              className="max-h-[min(70vh,800px)] w-full object-contain rounded-xl"
+            />
+            {photos.length > 1 && (
+              <button
+                type="button"
+                className="btn btn-s absolute right-0 z-10"
+                aria-label="Próxima foto"
+                disabled={safeIndex >= photos.length - 1}
+                onClick={() => setIndex((i) => Math.min(photos.length - 1, i + 1))}
+              >
+                <ChevronRight size={18} />
+              </button>
+            )}
+          </div>
+          {photos.length > 1 && (
+            <div className="flex max-w-full flex-wrap justify-center gap-2">
+              {photos.map((url, i) => (
+                <button
+                  key={`${url}-${i}`}
+                  type="button"
+                  className={`h-14 w-14 overflow-hidden rounded-lg border-2 transition-colors ${
+                    i === safeIndex ? 'border-brand2' : 'border-border opacity-70 hover:opacity-100'
+                  }`}
+                  onClick={() => setIndex(i)}
+                >
+                  <img src={url} alt="" className="h-full w-full object-cover" />
+                </button>
+              ))}
+            </div>
+          )}
+          <a
+            href={current}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="btn btn-s inline-flex items-center gap-2"
+          >
+            <ExternalLink size={14} /> Abrir em nova aba
+          </a>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+};
+
 const AssetDetail: React.FC<{ assetId: string, data: AppData, onNavigate: (r: string, p?: any) => void, onAction: (type: string, id: string) => void, onSaveHistory: (id: string, text: string) => void, user: User | null, onToast: (msg: string, type?: 's' | 'e') => void }> = ({ assetId, data, onNavigate, onAction, onSaveHistory, user, onToast }) => {
   const a = data.assets.find(x => x.id === assetId);
   if (!a) return <div className="empty"><div className="empty-title">Ativo não encontrado</div><button className="btn btn-p" onClick={() => onNavigate('assets')}>Voltar</button></div>;
@@ -490,7 +591,9 @@ const AssetDetail: React.FC<{ assetId: string, data: AppData, onNavigate: (r: st
   const [tab, setTab] = useState('info');
   const [cardPdfBusy, setCardPdfBusy] = useState(false);
   const [photoViewerOpen, setPhotoViewerOpen] = useState(false);
+  const [photoViewerIndex, setPhotoViewerIndex] = useState(0);
   const [historyText, setHistoryText] = useState('');
+  const assetPhotos = getAssetPhotoUrls(a);
   const cat = data.categories.find(c => c.id === a.category_id);
   const cc = data.costCenters.find(c => c.id === a.cost_center_id);
   const loc = data.locations.find(l => l.id === a.location_id);
@@ -521,8 +624,8 @@ const AssetDetail: React.FC<{ assetId: string, data: AppData, onNavigate: (r: st
         <div className="flex justify-between items-start gap-4 flex-wrap">
           <div className="flex gap-4 items-start">
             <div className="h-16 w-16 shrink-0 overflow-hidden rounded-2xl border border-border bg-bg4 shadow-inner">
-              {a.photo_url ? (
-                <img src={a.photo_url} alt="" className="h-full w-full object-cover" />
+              {assetPhotos[0] ? (
+                <img src={assetPhotos[0]} alt="" className="h-full w-full object-cover" />
               ) : (
                 <div className="flex h-full w-full items-center justify-center text-3xl">📦</div>
               )}
@@ -538,9 +641,16 @@ const AssetDetail: React.FC<{ assetId: string, data: AppData, onNavigate: (r: st
             </div>
           </div>
           <div className="flex flex-wrap gap-2.5 shrink-0">
-            {a.photo_url && (
-              <button type="button" className="btn btn-s" onClick={() => setPhotoViewerOpen(true)}>
-                <Camera size={14} /> Ver foto
+            {assetPhotos.length > 0 && (
+              <button
+                type="button"
+                className="btn btn-s"
+                onClick={() => {
+                  setPhotoViewerIndex(0);
+                  setPhotoViewerOpen(true);
+                }}
+              >
+                <Camera size={14} /> {assetPhotos.length > 1 ? `Ver fotos (${assetPhotos.length})` : 'Ver foto'}
               </button>
             )}
             <button
@@ -602,6 +712,8 @@ const AssetDetail: React.FC<{ assetId: string, data: AppData, onNavigate: (r: st
                     ['Fabricante', a.manufacturer], ['Marca', a.brand], ['Modelo', a.model],
                     ['Vida Útil', a.useful_life_months ? a.useful_life_months + ' meses' : null],
                     ['Valor Aquisição', fmtCurrency(a.acquisition_value)], ['Data Compra', fmtDate(a.acquisition_date)],
+                    ['Quantidade', a.quantity != null ? String(a.quantity) : '1'],
+                    ['Garantia até', fmtDate(a.warranty_expiry)],
                     ['Fornecedor', sup ? `${sup.name} (${sup.phone || sup.email || '—'})` : '—']
                   ].map(([l, v]) => (
                     <div key={l} className="detail-field">
@@ -610,23 +722,26 @@ const AssetDetail: React.FC<{ assetId: string, data: AppData, onNavigate: (r: st
                     </div>
                   ))}
                 </div>
-                {a.photo_url && (
+                {assetPhotos.length > 0 && (
                   <div className="detail-field mt-6 border-t border-border pt-6 sm:col-span-2">
-                    <div className="df-label">Foto do ativo</div>
-                    <div className="mt-2 overflow-hidden rounded-xl border border-border bg-bg4/50">
-                      <a href={a.photo_url} target="_blank" rel="noopener noreferrer" className="block">
-                        <img src={a.photo_url} alt="Foto do ativo" className="max-h-80 w-full object-contain" />
-                      </a>
+                    <div className="df-label">
+                      {assetPhotos.length > 1 ? `Fotos do ativo (${assetPhotos.length})` : 'Foto do ativo'}
                     </div>
-                    <a
-                      href={a.photo_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="mt-2 inline-flex items-center gap-1 text-[11px] font-bold text-brand2 hover:underline"
-                    >
-                      <ExternalLink size={12} />
-                      Abrir imagem em nova aba
-                    </a>
+                    <div className="mt-2 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+                      {assetPhotos.map((url, i) => (
+                        <button
+                          key={`${url}-${i}`}
+                          type="button"
+                          className="group overflow-hidden rounded-xl border border-border bg-bg4/50 text-left transition-colors hover:border-brand2/50"
+                          onClick={() => {
+                            setPhotoViewerIndex(i);
+                            setPhotoViewerOpen(true);
+                          }}
+                        >
+                          <img src={url} alt={`Foto ${i + 1} do ativo`} className="aspect-square w-full object-cover" />
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 )}
                 {hasValidGeo(a.geo_lat ?? undefined, a.geo_lng ?? undefined) && (
@@ -790,42 +905,14 @@ const AssetDetail: React.FC<{ assetId: string, data: AppData, onNavigate: (r: st
       </AnimatePresence>
     </motion.div>
 
-    {photoViewerOpen &&
-      a.photo_url &&
-      createPortal(
-        <div
-          className="overlay open"
-          role="dialog"
-          aria-modal="true"
-          aria-label="Foto do ativo"
-          onClick={() => setPhotoViewerOpen(false)}
-        >
-          <div className="modal max-w-4xl" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-title">
-              Foto do ativo
-              <button type="button" className="close-btn" aria-label="Fechar" onClick={() => setPhotoViewerOpen(false)}>
-                ✕
-              </button>
-            </div>
-            <div className="flex flex-col items-center gap-4 px-6 pb-6">
-              <img
-                src={a.photo_url}
-                alt={`Foto de ${a.asset_code}`}
-                className="max-h-[min(70vh,800px)] w-full object-contain rounded-xl"
-              />
-              <a
-                href={a.photo_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="btn btn-s inline-flex items-center gap-2"
-              >
-                <ExternalLink size={14} /> Abrir em nova aba
-              </a>
-            </div>
-          </div>
-        </div>,
-        document.body
-      )}
+    {photoViewerOpen && assetPhotos.length > 0 && (
+      <AssetPhotosModal
+        photos={assetPhotos}
+        initialIndex={photoViewerIndex}
+        title="Fotos do ativo"
+        onClose={() => setPhotoViewerOpen(false)}
+      />
+    )}
     </>
   );
 };
@@ -844,34 +931,105 @@ const AssetForm: React.FC<{
     existing || {
       asset_code: `ATI-${new Date().getFullYear()}-${String(data.assets.length + 1).padStart(5, '0')}`,
       status: 'active' as AssetStatus,
+      quantity: 1,
     }
   );
-  const [stagedPhoto, setStagedPhoto] = useState<File | null>(null);
-  const [stagedPreviewUrl, setStagedPreviewUrl] = useState<string | null>(null);
-  const [photoCleared, setPhotoCleared] = useState(false);
+  const [savedPhotoUrls, setSavedPhotoUrls] = useState<string[]>(() =>
+    existing ? getAssetPhotoUrls(existing) : []
+  );
+  const [stagedPhotos, setStagedPhotos] = useState<{ file: File; preview: string }[]>([]);
+  const [photoViewerOpen, setPhotoViewerOpen] = useState(false);
+  const [photoViewerIndex, setPhotoViewerIndex] = useState(0);
+  const [photoBusy, setPhotoBusy] = useState(false);
   const [saving, setSaving] = useState(false);
   const [geoBusy, setGeoBusy] = useState(false);
   const photoInputRef = React.useRef<HTMLInputElement>(null);
+  const storagePurgedUrlsRef = React.useRef(new Set<string>());
+  const originalSavedPhotoUrls = useMemo(
+    () => (existing ? getAssetPhotoUrls(existing) : []),
+    [existing]
+  );
 
-  useEffect(() => {
-    if (!stagedPhoto) {
-      setStagedPreviewUrl((prev) => {
-        if (prev) URL.revokeObjectURL(prev);
-        return null;
-      });
-      return;
-    }
-    const url = URL.createObjectURL(stagedPhoto);
-    setStagedPreviewUrl(url);
-    return () => URL.revokeObjectURL(url);
-  }, [stagedPhoto]);
+  const displayedPhotoUrls = useMemo(
+    () => [...savedPhotoUrls, ...stagedPhotos.map((p) => p.preview)],
+    [savedPhotoUrls, stagedPhotos]
+  );
+  const photoSlotsLeft = MAX_ASSET_PHOTOS - displayedPhotoUrls.length;
 
   const locOptions = filterLocationsForUserPick(data.locations, user);
   const ccOptions = filterCostCentersForUserPick(data.costCenters, user);
 
   const labelPreviewValue = existing ? labelPayload(existing) : (form.asset_code || '').trim();
 
-  const displayedPhotoUrl = stagedPreviewUrl || (!photoCleared ? form.photo_url : undefined);
+  const purgeSavedPhotoFromStorage = async (url: string): Promise<boolean> => {
+    if (!isAssetPhotoStorageUrl(url) || storagePurgedUrlsRef.current.has(url)) return true;
+    const ok = await removeAssetPhotoByUrl(url);
+    if (ok) storagePurgedUrlsRef.current.add(url);
+    return ok;
+  };
+
+  const removePhotoAt = async (index: number) => {
+    if (photoBusy || saving) return;
+    if (index < savedPhotoUrls.length) {
+      const url = savedPhotoUrls[index];
+      setPhotoBusy(true);
+      try {
+        const ok = await purgeSavedPhotoFromStorage(url);
+        if (!ok) {
+          onToast?.('Não foi possível remover a foto do Storage. Tente novamente.', 'e');
+          return;
+        }
+        setSavedPhotoUrls((urls) => urls.filter((_, i) => i !== index));
+      } finally {
+        setPhotoBusy(false);
+      }
+      return;
+    }
+    const stagedIndex = index - savedPhotoUrls.length;
+    setStagedPhotos((items) => {
+      const next = [...items];
+      const removed = next.splice(stagedIndex, 1)[0];
+      if (removed) URL.revokeObjectURL(removed.preview);
+      return next;
+    });
+  };
+
+  const removeAllPhotos = async () => {
+    if (photoBusy || saving) return;
+    setPhotoBusy(true);
+    try {
+      const failed = await removeAssetPhotosByUrls(savedPhotoUrls.filter((url) => !storagePurgedUrlsRef.current.has(url)));
+      if (failed.length) {
+        onToast?.('Não foi possível remover todas as fotos do Storage. Tente novamente.', 'e');
+        return;
+      }
+      savedPhotoUrls.forEach((url) => storagePurgedUrlsRef.current.add(url));
+      stagedPhotos.forEach((p) => URL.revokeObjectURL(p.preview));
+      setStagedPhotos([]);
+      setSavedPhotoUrls([]);
+    } finally {
+      setPhotoBusy(false);
+    }
+  };
+
+  const addPhotoFiles = (files: FileList | File[]) => {
+    const incoming = Array.from(files);
+    if (!incoming.length) return;
+    const accepted: { file: File; preview: string }[] = [];
+    for (const f of incoming) {
+      if (displayedPhotoUrls.length + accepted.length >= MAX_ASSET_PHOTOS) {
+        onToast?.(`Máximo de ${MAX_ASSET_PHOTOS} fotos por ativo.`, 'e');
+        break;
+      }
+      const msg = validateAssetPhotoFile(f);
+      if (msg) {
+        onToast?.(msg, 'e');
+        continue;
+      }
+      accepted.push({ file: f, preview: URL.createObjectURL(f) });
+    }
+    if (accepted.length) setStagedPhotos((items) => [...items, ...accepted]);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -924,35 +1082,35 @@ const AssetForm: React.FC<{
       }
 
       const id = existing?.id || genId();
-      let photo_url: string | undefined = photoCleared ? undefined : form.photo_url;
-
-      if (stagedPhoto) {
-        const v = validateAssetPhotoFile(stagedPhoto);
-        if (v) {
-          onToast?.(v, 'e');
-          return;
-        }
+      const uploadedUrls: string[] = [];
+      for (const staged of stagedPhotos) {
         try {
-          photo_url = await uploadAssetPhoto(stagedPhoto, id);
+          uploadedUrls.push(await uploadAssetPhoto(staged.file, id));
         } catch (err) {
-          onToast?.(humanizeNetworkError(err, 'Falha ao enviar a foto.'), 'e');
+          onToast?.(humanizeNetworkError(err, 'Falha ao enviar uma das fotos.'), 'e');
           return;
         }
       }
 
-      if (
-        existing?.photo_url &&
-        existing.photo_url !== photo_url &&
-        isAssetPhotoStorageUrl(existing.photo_url)
-      ) {
-        await removeAssetPhotoByUrl(existing.photo_url).catch(() => {});
+      const finalPhotoUrls = [...savedPhotoUrls, ...uploadedUrls];
+      const removedUrls = originalSavedPhotoUrls.filter(
+        (url) => !finalPhotoUrls.includes(url) && !storagePurgedUrlsRef.current.has(url)
+      );
+      const failedRemovals = await removeAssetPhotosByUrls(removedUrls);
+      if (failedRemovals.length) {
+        onToast?.('Algumas fotos removidas não puderam ser excluídas do Storage.', 'e');
+        return;
       }
+      removedUrls.forEach((url) => storagePurgedUrlsRef.current.add(url));
+
+      const photoFields = buildAssetPhotoFields(finalPhotoUrls);
 
       const geoNorm = normalizeGeoPair(form.geo_lat, form.geo_lng);
       onSave({
         ...form,
         id,
-        photo_url,
+        ...photoFields,
+        quantity: form.quantity != null && form.quantity >= 1 ? form.quantity : 1,
         geo_lat: geoNorm.geo_lat,
         geo_lng: geoNorm.geo_lng,
         category_id: form.category_id!.trim(),
@@ -960,8 +1118,9 @@ const AssetForm: React.FC<{
         location_id: form.location_id!.trim(),
         responsible_id: form.responsible_id!.trim(),
       } as Asset);
-      setStagedPhoto(null);
-      setPhotoCleared(false);
+      stagedPhotos.forEach((p) => URL.revokeObjectURL(p.preview));
+      setStagedPhotos([]);
+      setSavedPhotoUrls(finalPhotoUrls);
     } finally {
       setSaving(false);
     }
@@ -1055,39 +1214,64 @@ const AssetForm: React.FC<{
         </div>
 
         <div className="glass p-6">
-          <div className="sdiv !mt-0">Foto do ativo</div>
+          <div className="sdiv !mt-0">Fotos do ativo</div>
+          <p className="mb-4 text-[11px] font-medium text-text3">
+            Até {MAX_ASSET_PHOTOS} fotos (JPEG, PNG, WebP ou GIF, máx. 5 MB cada).
+            {displayedPhotoUrls.length > 0 && (
+              <span className="ml-1 text-text2">
+                {displayedPhotoUrls.length}/{MAX_ASSET_PHOTOS} selecionada{displayedPhotoUrls.length === 1 ? '' : 's'}.
+              </span>
+            )}
+          </p>
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
-            <div className="flex min-h-[140px] min-w-0 flex-1 items-center justify-center overflow-hidden rounded-2xl border border-border bg-bg4/40 sm:max-w-xs">
-              {displayedPhotoUrl ? (
-                <img
-                  src={displayedPhotoUrl}
-                  alt="Prévia da foto do ativo"
-                  className="max-h-56 w-full object-contain"
-                />
+            <div className="min-w-0 flex-1">
+              {displayedPhotoUrls.length > 0 ? (
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+                  {displayedPhotoUrls.map((url, i) => (
+                    <div
+                      key={`${url}-${i}`}
+                      className="group relative aspect-square overflow-hidden rounded-2xl border border-border bg-bg4/40"
+                    >
+                      <button
+                        type="button"
+                        className="h-full w-full"
+                        onClick={() => {
+                          setPhotoViewerIndex(i);
+                          setPhotoViewerOpen(true);
+                        }}
+                      >
+                        <img src={url} alt={`Foto ${i + 1}`} className="h-full w-full object-cover" />
+                      </button>
+                      {user?.role !== 'viewer' && !saving && !photoBusy && (
+                        <button
+                          type="button"
+                          className="absolute right-1.5 top-1.5 rounded-lg border border-red-500/40 bg-bg/90 px-2 py-0.5 text-[10px] font-bold text-red-400 opacity-0 transition-opacity group-hover:opacity-100"
+                          onClick={() => void removePhotoAt(i)}
+                        >
+                          Remover
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
               ) : (
-                <div className="flex flex-col items-center gap-2 p-6 text-center text-text3">
-                  <Camera size={32} strokeWidth={1.25} className="opacity-50" />
-                  <span className="text-[11px] font-medium">Nenhuma foto selecionada</span>
+                <div className="flex min-h-[140px] items-center justify-center overflow-hidden rounded-2xl border border-border bg-bg4/40 sm:max-w-xs">
+                  <div className="flex flex-col items-center gap-2 p-6 text-center text-text3">
+                    <Camera size={32} strokeWidth={1.25} className="opacity-50" />
+                    <span className="text-[11px] font-medium">Nenhuma foto selecionada</span>
+                  </div>
                 </div>
               )}
             </div>
-            <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-3 sm:min-w-[180px]">
               <input
                 ref={photoInputRef}
                 type="file"
                 accept="image/jpeg,image/png,image/webp,image/gif"
+                multiple
                 className="hidden"
                 onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (!f) return;
-                  const msg = validateAssetPhotoFile(f);
-                  if (msg) {
-                    onToast?.(msg, 'e');
-                    e.target.value = '';
-                    return;
-                  }
-                  setPhotoCleared(false);
-                  setStagedPhoto(f);
+                  if (e.target.files?.length) addPhotoFiles(e.target.files);
                   e.target.value = '';
                 }}
               />
@@ -1095,41 +1279,38 @@ const AssetForm: React.FC<{
                 <button
                   type="button"
                   className="btn btn-s"
-                  disabled={user?.role === 'viewer' || saving}
+                  disabled={user?.role === 'viewer' || saving || photoBusy || photoSlotsLeft <= 0}
                   onClick={() => photoInputRef.current?.click()}
                 >
                   <Camera size={16} className="mr-1" />
-                  {displayedPhotoUrl ? 'Trocar foto' : 'Enviar foto'}
+                  {displayedPhotoUrls.length > 0 ? 'Adicionar fotos' : 'Enviar fotos'}
                 </button>
-                {(displayedPhotoUrl || form.photo_url) && (
+                {displayedPhotoUrls.length > 0 && (
                   <button
                     type="button"
                     className="btn btn-s border border-red-500/30 text-red-400 hover:bg-red-500/10"
-                    disabled={user?.role === 'viewer' || saving}
-                    onClick={() => {
-                      setStagedPhoto(null);
-                      setPhotoCleared(true);
-                      setForm((f) => ({ ...f, photo_url: undefined }));
-                    }}
+                    disabled={user?.role === 'viewer' || saving || photoBusy}
+                    onClick={() => void removeAllPhotos()}
                   >
-                    Remover foto
+                    {photoBusy ? 'Removendo…' : 'Remover todas'}
                   </button>
                 )}
               </div>
-              {displayedPhotoUrl && (
-                <a
-                  href={displayedPhotoUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-[11px] font-bold text-brand2 hover:underline"
-                >
-                  <ExternalLink size={12} />
-                  Abrir em nova aba
-                </a>
+              {photoSlotsLeft <= 0 && (
+                <p className="text-[10px] font-medium text-amber-400/90">Limite de {MAX_ASSET_PHOTOS} fotos atingido.</p>
               )}
             </div>
           </div>
         </div>
+
+        {photoViewerOpen && displayedPhotoUrls.length > 0 && (
+          <AssetPhotosModal
+            photos={displayedPhotoUrls}
+            initialIndex={photoViewerIndex}
+            title="Prévia das fotos"
+            onClose={() => setPhotoViewerOpen(false)}
+          />
+        )}
 
         <div className="glass p-6">
           <div className="sdiv !mt-0">Especificações Técnicas</div>
@@ -1156,8 +1337,22 @@ const AssetForm: React.FC<{
             <div><label className="lbl">Data de Aquisição</label><input type="date" className="inp" value={form.acquisition_date || ''} onChange={e => setForm({...form, acquisition_date: e.target.value})} /></div>
             <div><label className="lbl">Valor de Aquisição (R$)</label><input type="number" step="0.01" className="inp" value={form.acquisition_value || ''} onChange={e => setForm({...form, acquisition_value: Number(e.target.value)})} placeholder="0,00" /></div>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
             <div><label className="lbl">Número da Nota Fiscal</label><input className="inp" value={form.invoice_number || ''} onChange={e => setForm({...form, invoice_number: e.target.value})} /></div>
+            <div>
+              <label className="lbl">Quantidade</label>
+              <input
+                type="number"
+                min={1}
+                step={1}
+                className="inp"
+                value={form.quantity ?? 1}
+                onChange={(e) => {
+                  const n = parseInt(e.target.value, 10);
+                  setForm({ ...form, quantity: Number.isFinite(n) && n >= 1 ? n : 1 });
+                }}
+              />
+            </div>
             <div><label className="lbl">Data de Expiração da Garantia</label><input type="date" className="inp" value={form.warranty_expiry || ''} onChange={e => setForm({...form, warranty_expiry: e.target.value})} /></div>
           </div>
         </div>
@@ -3606,10 +3801,23 @@ export default function App() {
           ...emptyAppData(),
           users: [profileRowToUser(profRow as any)],
         });
-        toast(
-          humanizeNetworkError(e, 'Erro ao sincronizar dados. Tente novamente ou verifique a conexão.'),
-          'e'
-        );
+        const reachable = await checkSupabaseReachable().catch(() => 'unreachable' as const);
+        if (reachable !== 'ok') {
+          toast(
+            reachable === 'misconfigured'
+              ? 'Supabase não configurado no build. Confirme VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY e reinicie o dev server.'
+              : 'Não foi possível conectar ao Supabase. Se você estiver em outra máquina/rede, confirme que ela tem internet e que o Supabase permite CORS para a origem do app (Project Settings → API → CORS / Allowed Origins: http://localhost:4000 e/ou o IP:4000).',
+            'e'
+          );
+        } else {
+          toast(
+            humanizeNetworkError(
+              e,
+              'Falha ao carregar dados do Supabase. Se persistir, verifique políticas RLS, schema aplicado e abra o console (F12) para ver a requisição que falhou.'
+            ),
+            'e'
+          );
+        }
       }
       setIsAuthReady(true);
     };
@@ -4477,11 +4685,11 @@ export default function App() {
     });
     try {
       await syncAppDataToSupabase(syncPrev, syncNext);
-      const storageOk = await removeStorageForDeletedAsset(id, a?.photo_url);
+      const storageOk = await removeStorageForDeletedAsset(id, a ? getAssetPhotoUrls(a) : []);
       toast(
         storageOk
           ? 'Ativo excluído com sucesso!'
-          : 'Ativo excluído, mas a foto não foi totalmente removida do Storage (permissões ou rede). Verifique o bucket asset-photos no Supabase.',
+          : 'Ativo excluído, mas nem todas as fotos foram removidas do Storage (permissões ou rede). Verifique o bucket asset-photos no Supabase.',
         storageOk ? 's' : 'e'
       );
       navigate('assets');

@@ -1,0 +1,218 @@
+================================================================================
+  DIRETRIZES VISUAIS — PROJETO ATTIVOS (para portar a outro front-end)
+  Origem: attivos/src/index.css + padrões de layout em App.tsx
+================================================================================
+
+1) STACK DE ESTILO
+------------------
+- Tailwind CSS v4 via plugin @tailwindcss/vite (sem tailwind.config.js clássico).
+- Um único arquivo global: index.css com @import "tailwindcss" e bloco @theme.
+- Fontes web carregadas no CSS (Google Fonts) + fallbacks de sistema.
+- Opcional no projeto original: animações de rota com motion/react (Framer Motion
+  API); não é obrigatório para o visual estático dos componentes.
+
+
+2) FONTES
+---------
+Import (replicar no CSS global):
+  https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900
+  &family=JetBrains+Mono:wght@400;500;600&display=swap
+
+Família sans-serif (--font-sans):
+  "SF Pro Text", "SF Pro Display", -apple-system, BlinkMacSystemFont, "Inter",
+  "Segoe UI", Roboto, Helvetica, Arial, sans-serif
+
+Família monoespaçada (--font-mono):
+  "SF Mono", "SFMono-Regular", ui-monospace, "JetBrains Mono", "Roboto Mono",
+  monospace
+
+Uso típico:
+  - Corpo: font-sans, antialiased.
+  - Códigos, chips, labels técnicos: font-mono onde aplicável no App.
+
+
+3) PALETA DE CORES (tokens Tailwind @theme → classes bg-*, text-*, border-*)
+---------------------------------------------------------------------------
+Fundo (camadas do mais escuro ao mais “elevado”):
+  --color-bg:   #080d1a   → bg-bg     (fundo global / base)
+  --color-bg2:  #0f172a   → bg-bg2    (painéis, sidebar, modal)
+  --color-bg3:  #111827   → bg-bg3    (tabelas / áreas intermediárias)
+  --color-bg4:  #1e293b   → bg-bg4    (inputs secundários, hovers)
+
+Marca (índigo / violeta):
+  --color-brand:  #6366f1 → bg-brand, text-brand, ring-brand
+  --color-brand2: #818cf8 → bordas de foco em inputs (border-brand2)
+
+Destaque:
+  --color-accent: #22d3ee (ciano; disponível como accent)
+
+Texto:
+  --color-text:  #f8fafc (principal)
+  --color-text2: #94a3b8 (secundário / labels)
+  --color-text3: #475569 (terciário / metadados)
+
+Bordas:
+  --color-border:  rgba(255,255,255,0.06)
+  --color-border2: rgba(99,102,241,0.3)
+
+Status / semântica (alinhados a utilitários Tailwind):
+  green:  #22c55e
+  orange:#f97316
+  red:    #ef4444
+  blue:   #3b82f6
+  indigo:#6366f1
+  yellow:#eab308
+  slate:  #64748b
+
+Tema geral: dark mode nativo (fundos azul-ardósia profundos, texto claro, marca
+índigo). Não há tema claro no arquivo.
+
+
+4) RAIO DE BORDA E “VIDRO”
+--------------------------
+- Cartões e blocos principais: rounded-2xl (glass, kpi, tbl-wrap externo).
+- Botões e inputs: rounded-xl.
+- Modal: rounded-3xl.
+- Logo / avatares pequenos: rounded-xl ou rounded-lg conforme componente.
+- Scrollbar thumb: rounded-full.
+
+Efeito “glass” (cartão translúcido):
+  .glass → bg-bg2/80 + border border-border + rounded-2xl + backdrop-blur-md +
+           shadow-xl shadow-black/20
+
+Hover em lista/cartões:
+  .glass-hover → hover elevado, borda mais clara, translate-y leve, sombra com
+  toque brand/5.
+
+
+5) SOMBRAS E PROFUNDIDADE
+-------------------------
+- shadow-xl shadow-black/20 nos cartões glass.
+- shadow-2xl em modal e toasts.
+- shadow-lg shadow-brand/20 no ícone da logo e elementos de destaque marca.
+- Topbar: bg-bg/60 backdrop-blur-xl (barra semi-transparente).
+
+
+6) LAYOUT (ESTRUTURA DE PÁGINA — IDs usados no CSS)
+---------------------------------------------------
+#app     → flex min-h-screen bg-bg, overflow-hidden
+#sidebar → w-64 bg-bg2 border-r border-border, coluna fixa altura tela
+#main    → flex-1 coluna, altura tela, overflow hidden
+#topbar  → h-16, borda inferior, px-6, backdrop blur
+#content → flex-1, p-6, overflow-y-auto (área de rolagem do conteúdo)
+
+Sidebar: logo (ícone quadrado brand), título, seções de nav com label em
+uppercase tracking-widest 10px, itens rounded-xl, estado ativo com bg-brand/10
+text-brand.
+
+
+7) COMPONENTES UTILITÁRIOS (classes em @layer components)
+--------------------------------------------------------
+Botões:
+  .btn      → base: inline-flex, gap-2, px-4 py-2, rounded-xl, text-sm, sem border
+  .btn-p    → primário: bg-brand text-white hover:bg-indigo-600
+  .btn-s    → secundário: bg-bg4 + border border-border
+  .btn-d    → perigo: vermelho translúcido
+  .btn-g    → ghost: transparente, hover bg-bg4
+
+Campos:
+  .inp      → fundo bg-bg, border-border, rounded-xl, px-3.5 py-2.5, text-sm
+  .inp:focus → border-brand2 + ring-4 ring-brand/15
+  .lbl      → label: text-xs text-text2 mb-1.5
+
+Tabela:
+  .tbl-wrap → overflow-x-auto rounded-2xl border bg-bg3/50
+  th: text-[11px] uppercase tracking-wider text-text3 border-b bg-bg2/50
+  td: text-text2 border-b border-white/5; hover linha: bg-bg4/40
+
+Abas:
+  .tabs → flex gap-6 border-b border-border mb-6
+  .tab → semibold inferior; .tab.active → text-brand border-b-2 border-brand
+
+Cabeçalhos de página:
+  .ph  → wrapper
+  .pt  → título página: text-2xl font-black tracking-tight
+  .ps  → subtítulo: text-sm text-text3
+  .hrow → linha título + ações (flex wrap)
+  .sdiv → seção dentro de card: text-[11px] font-bold uppercase tracking-widest
+          text-text3 mb-4 mt-6
+
+Detalhe (ficha):
+  .detail-field / .df-label / .df-value — hierarquia label pequeno uppercase,
+  valor text-sm font-medium.
+
+Estados vazios:
+  .empty, .empty-title, .empty-sub, .empty-icon
+
+Modal:
+  .overlay (fixed, blur, z-50) + .overlay.open
+  .modal (max-w-lg default), .modal-title, .close-btn
+
+Toasts:
+  #toast-container → fixed inferior direita, z-[100]
+  .toast-s → sucesso (borda verde)
+  .toast-e → erro (borda vermelha)
+  animação: animate-slide-up (0,25s translateY 8px → 0)
+
+Login:
+  #login-screen full viewport; .login-card com animate-slide-up
+  .bg-glow → blob blur brand/10 centralizado (decoração de fundo)
+
+Chips / status (badges de domínio):
+  .chip — pill bg-bg4 border font-mono uppercase 10px
+  Classes .b-active, .b-maintenance, … — variantes translúcidas por cor semântica
+  (vide final do index.css).
+
+
+8) MICROCOPY VISUAL (TIPOGRAFIA)
+--------------------------------
+- Títulos de seção em páginas: font-black ou font-bold com tracking-tight ou
+  tracking-tighter onde quer impacto (ex.: logo).
+- Metadados e navegação: text-[10px] ou [11px], uppercase, tracking-widest ou
+  tracking-wider, cor text-text3.
+- Corpo em listas/tabelas: text-sm, text-text2 nos td; ênfase com text-text ou
+  font-bold.
+
+
+9) SCROLLBAR (WebKit)
+---------------------
+Largura 1.5 (6px), track bg-bg2, thumb bg-bg4 rounded-full.
+
+
+10) ANIMAÇÃO GLOBAL
+-------------------
+@keyframes slide-up: opacidade 0→1, translateY 8px→0, 0,25s ease.
+Registrada como --animate-slide-up no @theme.
+
+
+11) COMO APLICAR EM OUTRO PROJETO (CHECKLIST)
+---------------------------------------------
+[ ] Instalar Tailwind v4 + @tailwindcss/vite (ou equivalente que suporte @theme).
+[ ] Copiar o bloco @theme (cores, fontes, keyframes) para o CSS global do projeto.
+[ ] Copiar @layer base (html/body, scrollbar) e @layer components completo de
+    index.css (ou extrair para tokens + componentes do seu design system).
+[ ] Garantir import das fontes Inter + JetBrains Mono (ou substituir mantendo a
+    escala de pesos 400–900 no sans e 400–600 no mono).
+[ ] Aplicar no root: className/min-h-screen com fundo bg-bg e texto text-text.
+[ ] Reproduzir grid: sidebar fixa 256px + main flex-1 com topbar + content com
+    padding p-6.
+[ ] Substituir botões/inputs nativos pelas classes .btn-*, .inp, .lbl onde couber.
+[ ] motion/react: opcional; transições de página usam opacity + translateY leves
+    (duration ~0,15–0,2s) no código React, alinhadas ao estilo “suave”.
+
+Arquivo de referência no repositório:
+  attivos/src/index.css (fonte única de verdade visual)
+  attivos/index.html (lang pt-BR, viewport padrão)
+  attivos/vite.config.ts (plugin tailwindcss())
+
+
+12) OBSERVAÇÕES
+---------------
+- Ícones no App: lucide-react (tamanhos frequentes 12–18px em linhas compactas).
+- Não depende de arquivo tailwind.config separado: tudo deriva de @theme no CSS.
+- Para React sem Vite, adapte o equivalente PostCSS/plugin Tailwind 4 para gerar
+  as mesmas utilities a partir do mesmo @theme.
+
+================================================================================
+Fim do documento — rev. extraída do código em index.css (componentes + tokens).
+================================================================================

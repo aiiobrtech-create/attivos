@@ -1,12 +1,29 @@
-import { supabase } from './supabaseClient';
+import { getSupabaseHttpBase, supabase } from './supabaseClient';
 
 function functionsBase(): string {
-  const url = import.meta.env.VITE_SUPABASE_URL as string;
+  const url = getSupabaseHttpBase();
   return `${url.replace(/\/$/, '')}/functions/v1`;
 }
 
 function anonKey(): string {
   return import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+}
+
+function formatInvokeFailure(res: Response, rawBody: string): string {
+  let parsed: { error?: string; message?: string } = {};
+  try {
+    parsed = JSON.parse(rawBody) as { error?: string; message?: string };
+  } catch {
+    /* corpo HTML ou texto simples */
+  }
+  const fromBody = (parsed.error || parsed.message || '').trim();
+  if (res.status === 404) {
+    return (
+      fromBody ||
+      'Função Edge não encontrada (404). Faça deploy das funções admin-create-user, admin-update-user e admin-delete-user (Supabase → Edge Functions).'
+    );
+  }
+  return fromBody || res.statusText || `HTTP ${res.status}`;
 }
 
 export async function invokeAdminCreateUser(body: {
@@ -28,9 +45,15 @@ export async function invokeAdminCreateUser(body: {
     },
     body: JSON.stringify(body),
   });
-  const json = (await res.json().catch(() => ({}))) as { error?: string; userId?: string };
+  const raw = await res.text();
+  let json = {} as { error?: string; userId?: string };
+  try {
+    json = JSON.parse(raw) as { error?: string; userId?: string };
+  } catch {
+    /* ignore */
+  }
   if (!res.ok) {
-    throw new Error(json.error || res.statusText || 'Falha ao criar usuário');
+    throw new Error(formatInvokeFailure(res, raw) || 'Falha ao criar usuário');
   }
   if (!json.userId) {
     throw new Error('Resposta inválida da função admin-create-user');
@@ -52,9 +75,9 @@ export async function invokeAdminUpdateUserPassword(userId: string, password: st
     },
     body: JSON.stringify({ userId, password }),
   });
-  const json = (await res.json().catch(() => ({}))) as { error?: string };
+  const raw = await res.text();
   if (!res.ok) {
-    throw new Error(json.error || res.statusText || 'Falha ao atualizar senha');
+    throw new Error(formatInvokeFailure(res, raw) || 'Falha ao atualizar senha');
   }
 }
 
@@ -72,8 +95,8 @@ export async function invokeAdminDeleteUser(userId: string): Promise<void> {
     },
     body: JSON.stringify({ userId }),
   });
-  const json = (await res.json().catch(() => ({}))) as { error?: string };
+  const raw = await res.text();
   if (!res.ok) {
-    throw new Error(json.error || res.statusText || 'Falha ao excluir usuário');
+    throw new Error(formatInvokeFailure(res, raw) || 'Falha ao excluir usuário');
   }
 }

@@ -152,8 +152,12 @@ export const genId = () => 'id-' + Date.now() + '-' + Math.random().toString(36)
  * Converte mensagens genéricas de rede do navegador (ex.: "Failed to fetch") em texto útil em português.
  */
 export function humanizeNetworkError(error: unknown, fallback = 'Operação não concluída.'): string {
-  const msg =
-    error instanceof Error ? error.message : typeof error === 'string' ? error : '';
+  let msg = '';
+  if (error instanceof Error) msg = error.message;
+  else if (typeof error === 'string') msg = error;
+  else if (error && typeof error === 'object' && 'message' in error) {
+    msg = String((error as { message: unknown }).message ?? '');
+  }
   const m = msg.trim().toLowerCase();
   if (
     m === 'failed to fetch' ||
@@ -165,7 +169,15 @@ export function humanizeNetworkError(error: unknown, fallback = 'Operação não
   ) {
     return 'Não foi possível conectar ao servidor. Verifique sua internet, se o projeto Supabase está ativo no painel e se VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY no .env estão corretos. Recarregue a página; o carregamento evita muitas requisições paralelas (menos falhas no navegador).';
   }
-  return msg || fallback;
+  if (
+    m === 'not found' ||
+    m === 'requested path not found' ||
+    (m.includes('404') && m.length <= 24) ||
+    (m.includes('not found') && m.length <= 48)
+  ) {
+    return '404 — não encontrado. Admin/usuários: publique as Edge Functions admin-create-user, admin-update-user e admin-delete-user. Fotos de ativo: crie o bucket Storage asset-photos (público para leitura, conforme seu schema). Veja F12 → Network na URL que falhou.';
+  }
+  return msg.trim() || fallback;
 }
 
 /**
@@ -191,7 +203,10 @@ export function formatPatrimonioSyncError(error: unknown, fallback: string): str
   }
 
   const parts: string[] = [];
-  if (message) parts.push(message);
+  if (message) {
+    const friendly = humanizeNetworkError(new Error(message), message);
+    parts.push(friendly);
+  }
 
   if (error && typeof error === 'object') {
     const o = error as Record<string, unknown>;
