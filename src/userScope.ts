@@ -7,14 +7,32 @@ export function parseProfileIdArray(v: unknown): string[] | undefined {
   return undefined;
 }
 
-export function assetMatchesUserScope(asset: Asset, user: User | null): boolean {
+function assetLocationInAllowedScope(
+  asset: Pick<Asset, 'location_id' | 'location_text'>,
+  allowedLocationIds: string[],
+  locations: Location[]
+): boolean {
+  if (asset.location_id && allowedLocationIds.includes(asset.location_id)) return true;
+  const text = asset.location_text?.trim().toLowerCase();
+  if (!text) return false;
+  return allowedLocationIds.some((lid) => {
+    const name = locations.find((l) => l.id === lid)?.name?.trim().toLowerCase();
+    return !!name && name === text;
+  });
+}
+
+export function assetMatchesUserScope(
+  asset: Asset,
+  user: User | null,
+  locations: Location[] = []
+): boolean {
   if (!user || user.role === 'admin') return true;
   const locs = user.allowed_location_ids;
   const ccs = user.allowed_cost_center_ids;
   const hasLoc = Array.isArray(locs) && locs.length > 0;
   const hasCc = Array.isArray(ccs) && ccs.length > 0;
   if (!hasLoc && !hasCc) return true;
-  if (hasLoc && !locs!.includes(asset.location_id)) return false;
+  if (hasLoc && !assetLocationInAllowedScope(asset, locs!, locations)) return false;
   if (hasCc && !ccs!.includes(asset.cost_center_id)) return false;
   return true;
 }
@@ -28,7 +46,7 @@ export function filterAppDataByUserScope(data: AppData, user: User | null): AppD
   const hasCc = Array.isArray(ccs) && ccs.length > 0;
   if (!hasLoc && !hasCc) return data;
 
-  const assets = data.assets.filter((a) => assetMatchesUserScope(a, user));
+  const assets = data.assets.filter((a) => assetMatchesUserScope(a, user, data.locations));
   const assetIds = new Set(assets.map((a) => a.id));
 
   return {
@@ -71,13 +89,14 @@ export function scopeSummaryLabel(user: User): string {
 }
 
 export function validateAssetWithinUserScope(
-  asset: Pick<Asset, 'location_id' | 'cost_center_id'>,
-  user: User | null
+  asset: Pick<Asset, 'location_id' | 'location_text' | 'cost_center_id'>,
+  user: User | null,
+  locations: Location[] = []
 ): string | null {
   if (!user || user.role === 'admin') return null;
   const locs = user.allowed_location_ids;
   const ccs = user.allowed_cost_center_ids;
-  if (locs?.length && !locs.includes(asset.location_id)) {
+  if (locs?.length && !assetLocationInAllowedScope(asset, locs, locations)) {
     return 'Localização fora do escopo permitido para o seu usuário.';
   }
   if (ccs?.length && !ccs.includes(asset.cost_center_id)) {

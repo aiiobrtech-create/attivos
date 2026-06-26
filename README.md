@@ -20,7 +20,7 @@ No **SQL Editor** do projeto:
 2. **Projeto novo:** execute **`supabase/schema.sql`** (perfis, RLS, trigger em `auth.users`, colunas atuais).
 3. **Projeto já existente:** execute **`supabase/migration_apply_pending.sql`** (fotos múltiplas, quantidade, garantia). Se faltar o bucket de fotos, rode também **`supabase/storage_asset_photos.sql`**.
 
-Migrações individuais (opcional): `migration_assets_photo_urls.sql`, `migration_assets_quantity.sql`, `migration_assets_warranty_expiry.sql`.
+Migrações individuais (opcional): `migration_assets_photo_urls.sql`, `migration_assets_quantity.sql`, `migration_assets_warranty_expiry.sql`, `migration_assets_location_text.sql`.
 
 ### Integração frontend ↔ Supabase
 

@@ -1,4 +1,4 @@
-import type { AppData, Category, CostCenter, Location, User } from './types';
+import type { AppData, Category, CostCenter, User } from './types';
 import {
   ASSET_IMPORT_STATUS_COLUMN,
   ASSET_IMPORT_STATUS_COLUMN_LEGACY,
@@ -14,7 +14,6 @@ export function validateImportPrerequisites(data: AppData): ImportPrereqResult {
   const missing: string[] = [];
   if (data.categories.length === 0) missing.push('categoria');
   if (data.costCenters.length === 0) missing.push('centro de custo');
-  if (data.locations.length === 0) missing.push('localização');
   if (data.users.length === 0) missing.push('usuário (responsável)');
 
   if (missing.length > 0) {
@@ -32,7 +31,7 @@ function norm(s: unknown): string {
 export type ResolvedImportRefs = {
   category: Category;
   costCenter: CostCenter;
-  location: Location;
+  locationText: string;
   responsible: User;
   statusRaw: string;
 };
@@ -66,12 +65,8 @@ export function validateAssetImportRow(
   );
   if (ccName && !costCenter) errors.push(`Centro de Custo "${ccName}" não existe no cadastro`);
 
-  const locName = norm(row['Localização']);
-  if (!locName) errors.push('Localização é obrigatória');
-  const location = data.locations.find(
-    (l) => l.name.trim().toLowerCase() === locName.toLowerCase()
-  );
-  if (locName && !location) errors.push(`Localização "${locName}" não existe no cadastro`);
+  const locationText = norm(row['Localização']);
+  if (!locationText) errors.push('Localização é obrigatória');
 
   const email = norm(row['Responsável (E-mail)']).toLowerCase();
   if (!email) errors.push('Responsável (E-mail) é obrigatório');
@@ -99,7 +94,7 @@ export function validateAssetImportRow(
     refs: {
       category: category!,
       costCenter: costCenter!,
-      location: location!,
+      locationText,
       responsible: responsible!,
       statusRaw,
     },

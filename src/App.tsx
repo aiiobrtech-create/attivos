@@ -26,6 +26,7 @@ import {
   ASSET_IMPORT_STATUS_COLUMN_LEGACY,
   humanizeNetworkError,
   formatPatrimonioSyncError,
+  getAssetLocationLabel,
 } from './utils';
 import { Asset, AssetStatus, Category, CostCenter, Location, User, MaintenanceOrder, Movement, Disposal, AuditLog, AssetHistory, Supplier, AppData } from './types';
 import Papa from 'papaparse';
@@ -596,7 +597,7 @@ const AssetDetail: React.FC<{ assetId: string, data: AppData, onNavigate: (r: st
   const assetPhotos = getAssetPhotoUrls(a);
   const cat = data.categories.find(c => c.id === a.category_id);
   const cc = data.costCenters.find(c => c.id === a.cost_center_id);
-  const loc = data.locations.find(l => l.id === a.location_id);
+  const loc = getAssetLocationLabel(a, data.locations);
   const resp = data.users.find(u => u.id === a.responsible_id);
   const sup = data.suppliers.find(s => s.id === a.supplier_id);
   
@@ -663,7 +664,7 @@ const AssetDetail: React.FC<{ assetId: string, data: AppData, onNavigate: (r: st
                 void downloadAssetCardPdf({
                   asset: a,
                   categoryName: cat?.name,
-                  locationName: loc?.name,
+                  locationName: loc || undefined,
                   costCenterName: cc?.name,
                   responsibleName: resp?.name,
                   supplierLine: sup ? `${sup.name} (${sup.phone || sup.email || '—'})` : undefined,
@@ -765,7 +766,7 @@ const AssetDetail: React.FC<{ assetId: string, data: AppData, onNavigate: (r: st
                   <div className="sdiv !mt-0">Localização Atual</div>
                   <div className="space-y-4">
                     {[
-                      ['Localização', loc?.name], ['Centro de Custo', cc?.name], ['Responsável', resp?.name]
+                      ['Localização', loc || '—'], ['Centro de Custo', cc?.name], ['Responsável', resp?.name]
                     ].map(([l, v]) => (
                       <div key={l} className="flex flex-col gap-1">
                         <span className="text-[11px] font-bold text-text3 uppercase tracking-wider">{l}</span>
@@ -927,13 +928,20 @@ const AssetForm: React.FC<{
   onToast?: ToastFn;
 }> = ({ assetId, data, user, onNavigate, onSave, onDelete, onToast }) => {
   const existing = assetId ? data.assets.find((x) => x.id === assetId) : null;
-  const [form, setForm] = useState<Partial<Asset>>(
-    existing || {
+  const [form, setForm] = useState<Partial<Asset>>(() => {
+    if (existing) {
+      const legacyLocName = data.locations.find((l) => l.id === existing.location_id)?.name;
+      return {
+        ...existing,
+        location_text: existing.location_text?.trim() || legacyLocName || '',
+      };
+    }
+    return {
       asset_code: `ATI-${new Date().getFullYear()}-${String(data.assets.length + 1).padStart(5, '0')}`,
       status: 'active' as AssetStatus,
       quantity: 1,
-    }
-  );
+    };
+  });
   const [savedPhotoUrls, setSavedPhotoUrls] = useState<string[]>(() =>
     existing ? getAssetPhotoUrls(existing) : []
   );
@@ -956,7 +964,6 @@ const AssetForm: React.FC<{
   );
   const photoSlotsLeft = MAX_ASSET_PHOTOS - displayedPhotoUrls.length;
 
-  const locOptions = filterLocationsForUserPick(data.locations, user);
   const ccOptions = filterCostCentersForUserPick(data.costCenters, user);
 
   const labelPreviewValue = existing ? labelPayload(existing) : (form.asset_code || '').trim();
@@ -1042,13 +1049,6 @@ const AssetForm: React.FC<{
         );
         return;
       }
-      if (locOptions.length === 0) {
-        onToast?.(
-          'Não há localização no seu escopo. Peça a um administrador para liberar localizações ou seu perfil de acesso.',
-          'e'
-        );
-        return;
-      }
       if (!(form.category_id || '').trim()) {
         onToast?.('Selecione uma categoria.', 'e');
         return;
@@ -1057,8 +1057,8 @@ const AssetForm: React.FC<{
         onToast?.('Selecione um centro de custo.', 'e');
         return;
       }
-      if (!(form.location_id || '').trim()) {
-        onToast?.('Selecione uma localização.', 'e');
+      if (!(form.location_text || '').trim()) {
+        onToast?.('Informe a localização.', 'e');
         return;
       }
       if (!(form.responsible_id || '').trim()) {
@@ -1115,7 +1115,8 @@ const AssetForm: React.FC<{
         geo_lng: geoNorm.geo_lng,
         category_id: form.category_id!.trim(),
         cost_center_id: form.cost_center_id!.trim(),
-        location_id: form.location_id!.trim(),
+        location_text: form.location_text!.trim(),
+        location_id: null,
         responsible_id: form.responsible_id!.trim(),
       } as Asset);
       stagedPhotos.forEach((p) => URL.revokeObjectURL(p.preview));
@@ -1377,19 +1378,13 @@ const AssetForm: React.FC<{
             </div>
             <div>
               <label className="lbl">Localização *</label>
-              <select
+              <input
                 className="inp"
                 required
-                value={form.location_id || ''}
-                onChange={(e) => setForm({ ...form, location_id: e.target.value })}
-              >
-                <option value="">Selecionar...</option>
-                {locOptions.map((l) => (
-                  <option key={l.id} value={l.id}>
-                    {l.name}
-                  </option>
-                ))}
-              </select>
+                value={form.location_text || ''}
+                onChange={(e) => setForm({ ...form, location_text: e.target.value })}
+                placeholder="Ex: Sala 203, Almoxarifado Central"
+              />
             </div>
             <div>
               <label className="lbl">Responsável *</label>
@@ -3695,12 +3690,20 @@ export default function App() {
         (a) =>
           (a.description || '').toLowerCase().includes(q) ||
           (a.asset_code || '').toLowerCase().includes(q) ||
-          (a.patrimonial_code || '').toLowerCase().includes(q)
+          (a.patrimonial_code || '').toLowerCase().includes(q) ||
+          (a.location_text || '').toLowerCase().includes(q)
       );
     }
     if (assetFilterStatus) list = list.filter((a) => a.status === assetFilterStatus);
     if (assetFilterCategoryId) list = list.filter((a) => a.category_id === assetFilterCategoryId);
-    if (assetFilterLocationId) list = list.filter((a) => a.location_id === assetFilterLocationId);
+    if (assetFilterLocationId) {
+      const locName = data.locations.find((l) => l.id === assetFilterLocationId)?.name?.trim().toLowerCase();
+      list = list.filter(
+        (a) =>
+          a.location_id === assetFilterLocationId ||
+          (!!locName && a.location_text?.trim().toLowerCase() === locName)
+      );
+    }
     if (assetFilterCostCenterId) list = list.filter((a) => a.cost_center_id === assetFilterCostCenterId);
     return list;
   }, [
@@ -4009,7 +4012,7 @@ export default function App() {
 
   const handleSaveAsset = async (asset: Asset) => {
     try {
-      const scopeErr = validateAssetWithinUserScope(asset, user);
+      const scopeErr = validateAssetWithinUserScope(asset, user, data.locations);
       if (scopeErr) {
         toast(scopeErr, 'e');
         return;
@@ -4112,7 +4115,8 @@ export default function App() {
             ),
             category_id: r.category.id,
             cost_center_id: r.costCenter.id,
-            location_id: r.location.id,
+            location_text: r.locationText,
+            location_id: null,
             responsible_id: r.responsible.id,
             acquisition_value: parseFloat(String(row['Valor de Aquisição'] ?? '').replace(',', '.')) || 0,
             acquisition_date:
@@ -4126,7 +4130,7 @@ export default function App() {
             useful_life_months: parseInt(String(row['Vida Útil (Meses)'] ?? ''), 10) || 0,
             observations: String(row['Observações'] ?? '').trim() || undefined,
           };
-          const scopeErr = validateAssetWithinUserScope(asset, user);
+          const scopeErr = validateAssetWithinUserScope(asset, user, data.locations);
           if (scopeErr) {
             scopeErrors.push(`Linha ${line}: ${scopeErr}`);
           } else {
@@ -4287,10 +4291,10 @@ export default function App() {
         const movements = isNew ? [...prev.movements, mv] : prev.movements.map((m) => (m.id === mv.id ? mv : m));
 
         if (asset) {
-          const updates: Record<string, string> = {};
+          const updates: Partial<Asset> = {};
           if (mv.to_location) {
-            const loc = prev.locations.find((l) => l.name === mv.to_location || l.id === mv.to_location);
-            if (loc) updates.location_id = loc.id;
+            updates.location_text = mv.to_location;
+            updates.location_id = null;
           }
           if (mv.to_cost_center) {
             const cc = prev.costCenters.find((c) => c.name === mv.to_cost_center || c.id === mv.to_cost_center);
@@ -5121,7 +5125,7 @@ export default function App() {
                               {a.patrimonial_code && <div className="text-[10px] text-text3 font-medium">Patrimônio: {a.patrimonial_code}</div>}
                             </td>
                             <td><Badge status={a.status} /></td>
-                            <td className="text-[12px] font-medium">{data.locations.find(l => l.id === a.location_id)?.name || '—'}</td>
+                            <td className="text-[12px] font-medium">{getAssetLocationLabel(a, data.locations) || '—'}</td>
                             <td className="font-mono text-[11px] font-bold">{fmtCurrency(a.acquisition_value)}</td>
                             <td className="text-right">
                               <button className="btn btn-s py-1.5 px-3 text-[11px] font-bold opacity-0 group-hover:opacity-100 transition-all transform translate-x-2 group-hover:translate-x-0" onClick={(e) => { e.stopPropagation(); navigate('asset-detail', { id: a.id }); }}>Ver Detalhes</button>
@@ -5153,7 +5157,7 @@ export default function App() {
                             </div>
                             <div className="flex items-center gap-2 text-[11px] text-text3">
                               <ArrowLeftRight size={12} />
-                              <span className="truncate">{data.locations.find(l => l.id === a.location_id)?.name || 'Sem Localização'}</span>
+                              <span className="truncate">{getAssetLocationLabel(a, data.locations) || 'Sem Localização'}</span>
                             </div>
                           </div>
                         </div>

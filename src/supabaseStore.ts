@@ -163,6 +163,7 @@ const ASSET_DB_KEYS = [
   'category_id',
   'cost_center_id',
   'location_id',
+  'location_text',
   'responsible_id',
   'supplier_id',
   'acquisition_value',

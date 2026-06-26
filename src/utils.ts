@@ -54,6 +54,20 @@ export const DISPOSAL_LABELS: Record<string, string> = {
   other: 'Outro'
 };
 
+import type { Asset, Location } from './types';
+
+/** Rótulo de localização do ativo (texto livre ou cadastro legado). */
+export function getAssetLocationLabel(
+  asset: Pick<Asset, 'location_text' | 'location_id'>,
+  locations?: Location[]
+): string {
+  const text = asset.location_text?.trim();
+  if (text) return text;
+  const loc = locations?.find((l) => l.id === asset.location_id);
+  if (loc?.name) return loc.name;
+  return asset.location_id?.trim() || '';
+}
+
 /** Tipos de movimentação — chaves internas em inglês, rótulos em português. */
 export const MOVEMENT_TYPE_LABELS: Record<string, string> = {
   transfer: 'Transferência',

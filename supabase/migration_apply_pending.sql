@@ -15,5 +15,14 @@ UPDATE public.assets SET quantity = 1 WHERE quantity IS NULL;
 -- Data de expiração da garantia
 ALTER TABLE public.assets ADD COLUMN IF NOT EXISTS warranty_expiry text NULL;
 
+-- Localização livre (digitável)
+ALTER TABLE public.assets ADD COLUMN IF NOT EXISTS location_text text NULL;
+ALTER TABLE public.assets ALTER COLUMN location_id DROP NOT NULL;
+UPDATE public.assets a
+SET location_text = l.name
+FROM public.locations l
+WHERE a.location_id = l.id
+  AND (a.location_text IS NULL OR trim(a.location_text) = '');
+
 -- Bucket de fotos (se ainda não existir)
 -- Rode também supabase/storage_asset_photos.sql se o bucket asset-photos não existir.

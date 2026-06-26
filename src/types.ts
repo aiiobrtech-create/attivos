@@ -63,7 +63,10 @@ export interface Asset {
   status: AssetStatus;
   category_id: string;
   cost_center_id: string;
-  location_id: string;
+  /** Legado: ID do cadastro de localizações. Novos ativos usam location_text. */
+  location_id?: string | null;
+  /** Localização livre (digitável, sem vínculo ao cadastro). */
+  location_text?: string;
   responsible_id: string;
   supplier_id?: string;
   acquisition_value?: number;
